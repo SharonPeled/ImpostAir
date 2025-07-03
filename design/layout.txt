@@ -1,0 +1,37 @@
+# Project Layout: Time Series Forecasting (PyTorch Lightning + MLflow)
+
+project_root/
+│
+├── main.py                  # CLI entrypoint: train/infer via config
+├── requirements.txt         # Dependencies
+├── README.md                # Project overview
+│
+├── config/                  # YAML config files (experiment, model, data, etc.)
+│   └── example.yaml
+│
+├── src/
+│   ├── data/                # Data loading, preprocessing, transforms
+│   │   ├── datamodule.py    # LightningDataModule for time series
+│   │   └── ...
+│   ├── models/              # Model definitions (modular, pluggable)
+│   │   ├── base.py          # Base model interface
+│   │   ├── my_model.py      # Example forecasting model
+│   │   └── ...
+│   ├── external/            # Wrappers/adapters for external model codebases (e.g., Chronos)
+│   │   └── ...
+│   ├── train.py             # Training logic (Lightning Trainer, MLflow logging)
+│   ├── infer.py             # Inference/prediction logic
+│   └── utils.py             # Utility functions (metrics, helpers)
+│
+├── notebooks/               # EDA, prototyping, experiments
+│   └── ...
+│
+└── design/
+    └── layout.txt           # (This file)
+
+# Key Principles
+- Modular: Swap models, preprocessing, or data with minimal code changes
+- Config-driven: All settings via YAML config
+- Extensible: Easy to add new models, data modules, or external model wrappers
+- MLflow: Experiment tracking/logging integrated
+- PyTorch Lightning: Training/inference abstraction 

@@ -1,0 +1,41 @@
+# Example configuration for time series forecasting
+
+project:
+  experiment_name: "exp_timeseries"
+  run_name: "run1"
+  seed: 42
+
+paths:
+  data_dir: "./data"
+  mlflow_uri: "./mlruns"
+  log_dir: "./lightning_logs"
+  checkpoint_dir: "./models"
+  predictions_dir: "./predictions"
+
+compute:
+  accelerator: "gpu"
+  devices: 1
+  num_workers: 4
+
+data:
+  train_file: "train.csv"
+  val_file: "val.csv"
+  test_file: "test.csv"
+  input_features: ["feature1", "feature2"]
+  target: "target"
+  window_size: 24
+  horizon: 1
+
+model:
+  class_path: "src.models.my_model.MyTimeSeriesModel"
+  input_dim: 2
+  hidden_dim: 64
+  num_layers: 2
+  dropout: 0.1
+
+training:
+  batch_size: 32
+  max_epochs: 20
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  early_stopping_patience: 5
