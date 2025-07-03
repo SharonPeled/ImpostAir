@@ -67,3 +67,5 @@ validations/
 tmp/
 temp/
 *.tmp 
+
+sandbox/

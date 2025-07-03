@@ -2,4 +2,8 @@ pytorch-lightning>=2.0
 mlflow>=2.0
 torch>=1.13
 pyyaml
+pandas
+numpy
+matplotlib
+seaborn
 # Add other dependencies as needed
