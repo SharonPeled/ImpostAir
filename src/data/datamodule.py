@@ -1,5 +1,6 @@
 import pytorch_lightning as pl
 
+
 class TimeSeriesDataModule(pl.LightningDataModule):
     def __init__(self, config):
         """Initialize with config dict."""
@@ -8,13 +9,13 @@ class TimeSeriesDataModule(pl.LightningDataModule):
 
     def setup(self, stage=None):
         """Load and preprocess data for train/val/test."""
-        pass
+        raise NotImplementedError("Not implemented")
 
     def train_dataloader(self):
-        pass
+        raise NotImplementedError("Not implemented")
 
     def val_dataloader(self):
-        pass
+        raise NotImplementedError("Not implemented")
 
     def test_dataloader(self):
-        pass
+        raise NotImplementedError("Not implemented")

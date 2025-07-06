@@ -1,9 +1,15 @@
-pytorch-lightning>=2.0
-mlflow>=2.0
-torch>=1.13
+torch
+lightning
+mlflow
 pyyaml
 pandas
 numpy
 matplotlib
 seaborn
-# Add other dependencies as needed
+torchmetrics
+scikit-learn
+plotly
+ipywidgets
+tqdm
+notebook
+jupyter 

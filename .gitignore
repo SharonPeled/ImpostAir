@@ -70,3 +70,5 @@ temp/
 
 sandbox/
 notebooks/*.csv
+config
+!config/example_config.yaml

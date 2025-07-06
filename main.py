@@ -3,10 +3,16 @@ import yaml
 import sys
 from src.train import run_training
 from src.infer import run_inference
+import os 
+
 
 def load_config(config_path):
     with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    for path in config['paths']:
+        config['paths'][path] = os.path.join(os.path.dirname(__file__), config['paths'][path])
+    return config
+
 
 def main():
     parser = argparse.ArgumentParser(description="Time Series Forecasting Pipeline")
