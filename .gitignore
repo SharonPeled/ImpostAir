@@ -69,3 +69,4 @@ temp/
 *.tmp 
 
 sandbox/
+notebooks/*.csv
