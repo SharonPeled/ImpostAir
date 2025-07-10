@@ -12,8 +12,7 @@ def get_class_from_path(class_path):
 
 def compute_patch_metrics(predicted_patches: torch.Tensor, 
                          target_patches: torch.Tensor,
-                         patch_len: int,
-                         num_features: int) -> dict:
+                         patch_len: int) -> dict:
     """
     Compute comprehensive metrics for patch prediction.
     
@@ -31,6 +30,7 @@ def compute_patch_metrics(predicted_patches: torch.Tensor,
             per_feature_mse (list): MSE per feature, averaged over patches and timesteps
     """
     num_patches, patch_dim = predicted_patches.shape
+    num_features = patch_dim // patch_len
     
     # Reshape the patches to [batch_size, num_patches, patch_len, num_features]
     predicted_reshaped = predicted_patches.view(num_patches, patch_len, num_features)

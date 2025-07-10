@@ -6,7 +6,6 @@ import datetime
 from lightning.pytorch.loggers import MLFlowLogger
 
 
-from src.models.patch_transformer_model import PatchTransformerTimeSeriesModel
 from src.data.GeneralTrajectoryDataModule import GeneralTrajectoryDataModule
 from src.objects.GlobalStandardNormalizer import GlobalStandardNormalizer
 from src.utils import get_class_from_path

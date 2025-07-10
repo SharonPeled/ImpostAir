@@ -59,9 +59,9 @@ logs/
 # *.json
 
 # Models and predictions
-models/
-predictions/
-validations/
+./models/
+./predictions/
+./validations/
 
 # Temporary files
 tmp/
