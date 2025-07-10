@@ -21,32 +21,29 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
 
 def main():
+    
+    parser = argparse.ArgumentParser(description="Time Series Forecasting Pipeline")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    print('DEBUG MODE')
-    run_training(load_config('config/SCAT.yaml'))
+    # Train command
+    train_parser = subparsers.add_parser("train", help="Train a model")
+    train_parser.add_argument("--config", required=True, help="Path to YAML config file")
 
-    # parser = argparse.ArgumentParser(description="Time Series Forecasting Pipeline")
-    # subparsers = parser.add_subparsers(dest="command", required=True)
+    # Inference command
+    infer_parser = subparsers.add_parser("infer", help="Run inference with a trained model")
+    infer_parser.add_argument("--config", required=True, help="Path to YAML config file")
+    infer_parser.add_argument("--checkpoint", required=True, help="Path to model checkpoint")
 
-    # # Train command
-    # train_parser = subparsers.add_parser("train", help="Train a model")
-    # train_parser.add_argument("--config", required=True, help="Path to YAML config file")
+    args = parser.parse_args()
+    config = load_config(args.config)
 
-    # # Inference command
-    # infer_parser = subparsers.add_parser("infer", help="Run inference with a trained model")
-    # infer_parser.add_argument("--config", required=True, help="Path to YAML config file")
-    # infer_parser.add_argument("--checkpoint", required=True, help="Path to model checkpoint")
-
-    # args = parser.parse_args()
-    # config = load_config(args.config)
-
-    # if args.command == "train":
-    #     run_training(config)
-    # elif args.command == "infer":
-    #     run_inference(config, args.checkpoint)
-    # else:
-    #     print("Unknown command", file=sys.stderr)
-    #     sys.exit(1)
+    if args.command == "train":
+        run_training(config)
+    elif args.command == "infer":
+        run_inference(config, args.checkpoint)
+    else:
+        print("Unknown command", file=sys.stderr)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
