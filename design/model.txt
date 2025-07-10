@@ -1,0 +1,486 @@
+# Decoder-Only Transformer for Multivariate Time Series Forecasting
+# Design Document
+
+## Overview
+
+This document outlines the design and implementation of a decoder-only Transformer model for multivariate time series forecasting, 
+specifically targeting trajectory prediction tasks. 
+The model will be built using PyTorch Lightning and integrated with the existing codebase structure.
+
+## Model Architecture
+
+### Core Design Principles
+1. **Patch-Based Tokenization**: Segment multivariate time series into subseries-level patches, inspired by PatchTST approach
+2. **Decoder-Only Architecture**: Uses causal self-attention to ensure the model never sees future time steps during training
+3. **Multivariate Patches**: Each patch contains all features (NOT channel-independent like PatchTST)
+4. **Variable-Length Sequences**: Supports sequences of different lengths through proper padding and masking
+5. **Next Patch Prediction**: Predicts the immediate next single patch given a context window of past patches
+
+### Patch-Based Input Strategy
+
+#### Patching Approach (Inspired by PatchTST)
+```
+Raw Time Series: [batch_size, seq_len, num_features]
+↓ Patch Segmentation
+Context Patches: [batch_size, num_context_patches, patch_len * num_features]
+Target Patch: [batch_size, 1, patch_len * num_features]
+
+Where:
+- patch_len: Length of each patch (e.g., 16 time steps)
+- num_context_patches: context_length // patch_len (e.g., 320//16 = 20 patches)
+- Each patch contains ALL features (multivariate, not channel-independent)
+- Model predicts single next patch from context patches
+```
+
+### Architecture Components
+
+#### 1. Patch Embedding Layer
+```
+Input: [batch_size, num_context_patches, patch_len * num_features]
+- Patch Embedding: Linear projection from (patch_len * num_features) to d_model
+- Positional Encoding: Learnable or sinusoidal patch position embeddings
+- Dropout: Applied after embedding
+Output: [batch_size, num_context_patches, d_model]
+```
+
+#### 2. Transformer Decoder Stack
+```
+Components per layer:
+- Multi-Head Causal Self-Attention (with patch-level attention mask)
+- Layer Normalization (pre-norm architecture) 
+- Feed-Forward Network (d_model -> d_ff -> d_model)
+- Residual connections around each sub-layer
+- Dropout throughout
+
+Uses PyTorch's built-in nn.TransformerDecoderLayer (NOT custom implementation)
+Number of layers: configurable (default: 3-8 layers for patch-based approach)
+```
+
+#### 3. Next Patch Prediction Head
+```
+Input: [batch_size, num_context_patches, d_model]
+- Extract final patch representation: [batch_size, d_model] (last position)
+- Linear projection: d_model -> (patch_len * num_features)
+- Optional activation (e.g., no activation for regression)
+Output: [batch_size, patch_len * num_features] (single next patch)
+Can be reshaped to: [batch_size, patch_len, num_features]
+```
+
+### Key Architecture Parameters (via YAML config)
+```yaml
+model:
+  class_path: "src.models.patch_transformer_model.PatchTransformerTimeSeriesModel"
+  
+  # Patch-based parameters (inspired by PatchTST)
+  patch_len: 16          # Length of each patch (subseries length)
+  stride: 8              # Stride for patch extraction (can be < patch_len for overlap)
+  
+  # Architecture parameters (adapted from PatchTST defaults)
+  d_model: 128           # Model dimension (smaller due to patch efficiency)
+  n_heads: 16            # Number of attention heads (PatchTST uses 16)
+  n_layers: 3            # Number of transformer layers (fewer needed with patches)
+  d_ff: 256              # Feed-forward dimension (2x d_model typical)
+  dropout: 0.2           # Dropout rate
+  activation: "gelu"     # Activation function (GELU as in PatchTST)
+  
+  # Input/Output parameters
+  num_features: 6        # Number of input features (lat, lon, alt, vx, vy, timestamp)
+  max_num_patches: 64    # Maximum number of patches for positional encoding
+  
+  # Training parameters
+  context_length: 320    # Number of past time steps (should be divisible by patch_len)
+  # Note: forecast_length = patch_len (16) - model predicts single next patch
+  
+  # Positional encoding
+  pos_encoding_type: "learnable"  # "learnable" or "sinusoidal"
+  
+  # Patch embedding options
+  padding_mode: "replicate"  # How to handle sequences not divisible by patch_len
+```
+
+## Data Handling Strategy
+
+### Next Patch Prediction Data Pipeline
+
+#### Sequence Windowing Strategy
+1. **Raw Sequence Preparation**: For each trajectory, extract sequences
+   - Total sequence length: `context_length + patch_len`
+   - Example: 320 + 16 = 336 time steps
+   
+2. **Patch Segmentation**: Convert sequences to context patches + target patch
+   - Context patches: `context_length // patch_len` patches (e.g., 320//16 = 20 patches)
+   - Target patch: 1 patch (the next 16 time steps)
+   - Total: 20 context patches → predict 1 target patch
+
+3. **Teacher Forcing Training Format**: Next patch prediction
+   - Input: context patches [20 patches]
+   - Target: next single patch [1 patch]
+   - Loss computed on predicted vs actual next patch
+
+#### Patch Creation Process
+```python
+def create_patches(sequence, patch_len, stride):
+    """
+    sequence: [seq_len, num_features]
+    returns: [num_patches, patch_len * num_features]
+    """
+    patches = []
+    for i in range(0, seq_len - patch_len + 1, stride):
+        patch = sequence[i:i+patch_len].flatten()  # Flatten multivariate patch
+        patches.append(patch)
+    return torch.stack(patches)
+```
+
+#### Handling Variable-Length Trajectories
+1. **Minimum Length Filtering**: Skip trajectories shorter than `context_length + patch_len` (336 time steps)
+2. **Shorter Trajectories**: Pad sequences to reach minimum length using replication padding
+3. **Longer Trajectories**: Take the last `context_length + patch_len` time steps for training
+4. **Multiple Windows**: For long trajectories, can create multiple samples by sliding the window
+5. **Batch-Level Padding**: Pad context patch sequences to max number of patches in batch
+
+### Dataset Extension (SCATDataset Enhancement)
+
+#### Current SCATDataset Issues to Address:
+1. Returns pandas DataFrames instead of PyTorch tensors
+2. No windowing or sequence preparation
+3. No padding/masking support
+4. No train/val/test splits
+
+#### Enhanced SCATDataset Design:
+```python
+class SCATDataset(TimeSeriesDataModule):
+    def __init__(self, config):
+        # Initialize with patch-based functionality
+        self.patch_len = config['model']['patch_len']
+        self.context_length = config['model']['context_length']
+        
+    def load_trajectory_df(self, idx):
+        """Load trajectory as pandas DataFrame (original functionality)"""
+        # Returns: pandas DataFrame with trajectory data
+        
+    def prepare_trajectory_sequence(self, trajectory_df):
+        """Convert trajectory DataFrame to normalized tensor sequence"""
+        # Handle feature extraction, normalization, padding/truncation
+        # Returns: [seq_len, num_features] tensor
+        
+    def create_training_sample(self, sequence):
+        """Create context patches + target patch from sequence"""
+        # sequence: [context_length + patch_len, num_features]
+        # returns: context_patches, target_patch
+        
+    def __getitem__(self, idx):
+        """Return properly formatted training sample"""
+        # Return: {
+        #   'context_patches': tensor [num_context_patches, patch_len * num_features],
+        #   'target_patch': tensor [patch_len * num_features], 
+        #   'attention_mask': tensor [num_context_patches],
+        #   'file_id': str (for tracking)
+        # }
+        
+    def collate_fn(self, batch):
+        """Custom collation for variable-length context sequences"""
+        # Pad context patch sequences to max number of patches in batch
+        # Create proper attention masks
+        # Stack into tensors
+```
+
+### Context Masking Strategy
+
+#### 1. Context Attention Masking
+- **Causal Context Mask**: Each context patch can attend to all previous context patches (full attention within context)
+- **Padding Mask**: Mask padded context positions for variable-length trajectories
+- **Combined Mask**: Element-wise multiplication of causal and padding masks
+
+#### 2. Loss Computation
+- **Simple MSE Loss**: Direct MSE between predicted patch and target patch
+- **No Masking Needed**: Since we predict single patch, no need for forecast/padding masks in loss
+- **Patch-Level Loss**: MSE loss over entire predicted patch (patch_len * num_features)
+
+#### Implementation Details:
+```python
+def create_context_attention_mask(num_context_patches):
+    """Lower triangular matrix for causal attention within context"""
+    return torch.tril(torch.ones(num_context_patches, num_context_patches))
+
+def create_context_padding_mask(context_lengths, max_num_context_patches):
+    """Mask for padded context positions"""
+    return torch.arange(max_num_context_patches)[None, :] < context_lengths[:, None]
+
+def next_patch_mse_loss(predicted_patch, target_patch):
+    """Simple MSE loss for next patch prediction"""
+    # predicted_patch: [batch, patch_len * num_features]
+    # target_patch: [batch, patch_len * num_features]
+    return F.mse_loss(predicted_patch, target_patch)
+```
+
+## Training Strategy
+
+### Loss Function
+- **Primary Loss**: MSE Loss between predicted next patch and actual next patch
+- **Simple and Direct**: No complex masking needed since we predict single patch
+- **Multi-Feature**: Loss computed over entire patch (all features and time steps in patch)
+
+### Training Configuration (adapted from PatchTST):
+```yaml
+training:
+  batch_size: 128           # Larger batch size due to patch efficiency
+  max_epochs: 100
+  learning_rate: 0.0001     # PatchTST uses 1e-4
+  weight_decay: 0.01        # L2 regularization as in PatchTST
+  gradient_clip_val: 1.0
+  
+  # Learning rate scheduling
+  lr_scheduler: "cosine"    # Cosine annealing as in PatchTST
+  warmup_epochs: 10
+  
+  # Early stopping
+  early_stopping_patience: 20   # Longer patience for patch-based training
+  early_stopping_monitor: "val_loss"
+  
+  # Patch-specific training parameters
+  teacher_forcing_ratio: 1.0    # Use teacher forcing during training
+  autoregressive_inference: true  # Pure autoregressive during inference
+```
+
+### Data Preprocessing:
+1. **Feature Normalization**: StandardScaler per feature across all trajectories
+2. **Timestamp Handling**: Convert to relative time (seconds from start)
+3. **Missing Value Handling**: Forward fill or interpolation
+4. **Outlier Detection**: Optional robust scaling
+
+## Implementation Plan
+
+### File Structure:
+```
+src/
+├── models/
+│   ├── patch_transformer_model.py      # Main Patch-based Transformer model
+│   ├── patch_embedding.py              # Patch creation and embedding layers
+│   └── positional_encoding.py          # Positional encoding implementations
+├── data/
+│   ├── SCATDataset.py                  # Enhanced dataset (modify existing)
+│   ├── patch_preprocessing.py          # Patch-based preprocessing utilities
+│   └── patch_collate.py               # Patch batching and collation functions
+└── utils/
+    ├── patch_masking.py               # Patch-level attention and loss masking
+    └── trajectory_metrics.py          # Trajectory-specific evaluation metrics
+```
+
+### Model Implementation (patch_transformer_model.py):
+```python
+class PatchTransformerTimeSeriesModel(BaseTimeSeriesModel):
+    def __init__(self, config):
+        super().__init__()
+        self.patch_len = config['model']['patch_len']
+        self.d_model = config['model']['d_model']
+        self.num_features = config['model']['num_features']
+        
+        # Patch embedding layer
+        patch_input_dim = self.patch_len * self.num_features
+        self.patch_embedding = nn.Linear(patch_input_dim, self.d_model)
+        
+        # Positional encoding
+        self.pos_encoding = PositionalEncoding(self.d_model, config['model']['max_num_patches'])
+        
+        # Transformer decoder layers (using PyTorch built-in)
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=self.d_model,
+            nhead=config['model']['n_heads'],
+            dim_feedforward=config['model']['d_ff'],
+            dropout=config['model']['dropout'],
+            activation=config['model']['activation'],
+            batch_first=True
+        )
+        self.transformer_decoder = nn.TransformerDecoder(decoder_layer, config['model']['n_layers'])
+        
+        # Next patch prediction head
+        self.next_patch_head = nn.Linear(self.d_model, patch_input_dim)
+        
+    def forward(self, context_patches, attention_mask=None):
+        # context_patches: [batch, num_context_patches, patch_len * num_features]
+        
+        # Patch embedding + positional encoding
+        embedded = self.patch_embedding(context_patches)
+        embedded = self.pos_encoding(embedded)
+        
+        # Pass through transformer decoder
+        output = self.transformer_decoder(embedded, embedded, tgt_mask=attention_mask)
+        
+        # Extract final representation (last patch position)
+        final_repr = output[:, -1, :]  # [batch, d_model]
+        
+        # Predict next patch
+        next_patch_pred = self.next_patch_head(final_repr)  # [batch, patch_len * num_features]
+        
+        return next_patch_pred
+        
+    def training_step(self, batch, batch_idx):
+        # Forward pass: context_patches -> next_patch_prediction
+        # Simple MSE loss between prediction and target
+        # Logging metrics
+        
+    def validation_step(self, batch, batch_idx):
+        # Validation forward pass
+        # Compute metrics on next patch prediction
+        
+    def configure_optimizers(self):
+        # AdamW optimizer with scheduling (as in PatchTST)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4, weight_decay=1e-2)
+        return optimizer
+```
+
+### Enhanced Dataset Interface:
+```python
+class SCATDataset(TimeSeriesDataModule):
+    def setup(self, stage=None):
+        # Load trajectory file paths
+        # Split files into train/val/test by trajectory
+        # On-the-fly processing during __getitem__
+        
+    def process_trajectory_file(self, file_path):
+        """Load and process single trajectory file"""
+        # Load trajectory DataFrame
+        # Extract required features
+        # Normalize features (using global stats)
+        # Handle variable length (pad/truncate)
+        # Return: [seq_len, num_features] tensor
+        
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_file_paths,  # List of file paths
+            batch_size=self.config['training']['batch_size'],
+            collate_fn=self.collate_fn,
+            shuffle=True
+        )
+        
+    def collate_fn(self, batch):
+        """Batch collation for context-target pairs"""
+        # Process each file path in batch
+        # Create context patches + target patch
+        # Handle variable number of context patches
+        # Return batched tensors ready for model
+```
+
+## Generalization Strategy
+
+### Dataset Interface Design
+The model is designed to work with any dataset that implements the following interface:
+
+#### Required Dataset Methods:
+```python
+def __getitem__(self, idx):
+    """Returns a dictionary with:
+    - 'input_seq': [seq_len, num_features] tensor
+    - 'target_seq': [seq_len, num_features] tensor  
+    - 'attention_mask': [seq_len] boolean tensor
+    - 'forecast_mask': [seq_len] boolean tensor
+    """
+    
+def get_feature_info(self):
+    """Returns feature metadata:
+    - feature_names: List of feature names
+    - feature_dims: Number of features
+    - normalization_stats: Mean/std for denormalization
+    """
+```
+
+#### Pluggable Components:
+1. **Feature Extractors**: Different datasets can have custom feature extraction
+2. **Preprocessing Pipelines**: Configurable normalization and preprocessing
+3. **Windowing Strategies**: Adaptable to different temporal patterns
+4. **Evaluation Metrics**: Dataset-specific evaluation measures
+
+### Configuration-Driven Adaptation:
+```yaml
+data:
+  dataset_class: "src.data.SCATDataset"  # Swappable dataset class
+  input_features: ['lat', 'lon', 'alt', 'vx', 'vy', 'timestamp']
+  feature_preprocessing:
+    normalization: "standard"  # "standard", "minmax", "robust"
+    handle_missing: "forward_fill"
+  
+  # Dataset-specific parameters  
+  min_trajectory_length: 336  # context_length + patch_len (320 + 16)
+  window_stride: 16          # Stride for sliding trajectory windows (usually = patch_len)
+  
+  # Patch-specific parameters
+  patch_len: 16              # Must match model.patch_len
+  min_context_patches: 20    # Minimum context patches needed (context_length // patch_len)
+```
+
+## Evaluation and Metrics
+
+### Primary Metrics:
+1. **MSE**: Mean Squared Error between predicted and actual next patch
+2. **MAE**: Mean Absolute Error for robustness assessment  
+3. **RMSE**: Root Mean Squared Error for interpretability
+
+### Patch-Specific Metrics:
+1. **Patch MSE**: MSE computed over entire patch (patch_len * num_features)
+2. **Per-Feature MSE**: MSE computed separately for each feature
+3. **Per-Timestep MSE**: MSE computed separately for each time step within patch
+
+### Multi-Step Evaluation (Optional):
+For longer horizon evaluation, run model iteratively:
+1. Use predicted patch as context for next prediction
+2. Accumulate predictions for longer sequences
+3. Compute traditional trajectory metrics (FDE, ADE)
+
+### Implementation:
+```python
+def compute_next_patch_metrics(predicted_patch, target_patch):
+    """Compute metrics for next patch prediction"""
+    # predicted_patch: [batch, patch_len * num_features]  
+    # target_patch: [batch, patch_len * num_features]
+    # Return: MSE, MAE, per-feature MSE, etc.
+```
+
+## Future Extensions
+
+### Model Enhancements:
+1. **Multi-Scale Attention**: Different attention patterns for different time scales
+2. **Feature-Specific Encoders**: Separate encoding for different feature types
+3. **Uncertainty Quantification**: Probabilistic forecasting with confidence intervals
+4. **Conditional Generation**: Incorporate external conditions (weather, traffic)
+
+### Training Improvements:
+1. **Curriculum Learning**: Start with shorter forecasts, gradually increase
+2. **Multi-Task Learning**: Joint prediction of multiple trajectory properties
+3. **Data Augmentation**: Trajectory perturbations and synthetic data
+4. **Transfer Learning**: Pre-training on larger trajectory datasets
+
+### Architecture Variants:
+1. **Encoder-Decoder**: Add encoder for bidirectional context encoding
+2. **Hierarchical Models**: Multi-resolution temporal modeling
+3. **Graph-Enhanced**: Incorporate spatial relationships between trajectories
+4. **Continuous Time**: Neural ODEs for irregular time sampling
+
+## Conclusion
+
+This design provides a robust, simplified patch-based foundation for next patch prediction in multivariate time series, using decoder-only Transformers inspired by PatchTST efficiency while maintaining multivariate modeling. The architecture focuses on learning to predict the immediate next patch given a context of previous patches.
+
+### Key Design Decisions:
+- **Next Patch Prediction**: Simplified approach focusing on single patch prediction with teacher forcing
+- **Patch-Based Multivariate Modeling**: Unlike PatchTST's channel independence, we maintain feature interactions within each patch
+- **Context-to-Prediction Architecture**: Clean separation between context patches and single target patch
+- **Standard PyTorch Components**: Uses built-in TransformerDecoderLayer for reliability
+
+### Benefits of This Approach:
+- **Simplicity**: Clear training objective with direct MSE loss on next patch
+- **Computational Efficiency**: Patch tokenization reduces sequence length significantly  
+- **Scalable**: Can be extended to longer horizons through iterative prediction
+- **Teacher Forcing**: Natural training paradigm for learning next patch patterns
+- **Flexible**: Easy to modify patch size and context length via configuration
+
+### Training Characteristics:
+- **On-the-fly Processing**: No preprocessing stages, direct file-to-batch transformation
+- **Trajectory-based Splits**: Train/val/test splits respect trajectory boundaries
+- **Global Normalization**: Consistent feature scaling across all trajectories
+- **Variable Length Handling**: Padding for short trajectories, truncation for long ones
+
+The implementation prioritizes:
+- **Clarity**: Simple next patch prediction task with clear data flow
+- **Efficiency**: Patch-based approach for computational gains
+- **Modularity**: Configuration-driven adaptation to different datasets
+- **Maintainability**: Standard PyTorch components and clear interfaces
+- **Extensibility**: Foundation for more complex forecasting approaches 
