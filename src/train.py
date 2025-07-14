@@ -96,7 +96,7 @@ def run_training(config):
         
         # Progress bar and logging
         enable_progress_bar=True,
-        log_every_n_steps=50,
+        # log_every_n_steps=1,
         
         # Validation
         check_val_every_n_epoch=1,

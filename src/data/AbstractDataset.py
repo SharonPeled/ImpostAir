@@ -23,8 +23,13 @@ class AbstractDataset(Dataset):
     def __getitem__(self, idx):
         """Load and return a single trajectory."""
         file_path = self.df.iloc[idx]['path']
+
+        df_trajectory = self.load_trajectory(file_path)
+
+        if 'timestamp' in self.config['data']['input_features']:
+            df_trajectory = df_trajectory.drop('timestamp', axis=1)
         
-        ts = torch.tensor(self.load_trajectory(file_path)).float()
+        ts = torch.tensor(df_trajectory.values).float()
         if self.transform:
             ts = self.transform(ts)
         return {

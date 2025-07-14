@@ -42,7 +42,7 @@ class SCATDataset(AbstractDataset):
                         point['alt'] = plot['I062/136'].get('measured_flight_level')
                 
                 # Extract timestamp
-                if 'time_of_track' in input_features:
+                if 'timestamp' in input_features:
                     point['timestamp'] = plot.get('time_of_track')
                 
                 # Extract velocity if available
@@ -54,7 +54,7 @@ class SCATDataset(AbstractDataset):
                 
                 plots.append(point)
         
-        return pd.DataFrame(plots).values
+        return pd.DataFrame(plots)
 
     @staticmethod
     def get_all_ids_df(data_dir: str) -> pd.DataFrame:

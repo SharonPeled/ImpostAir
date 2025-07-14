@@ -67,6 +67,11 @@ class BaseNextPatchForecaster(pl.LightningModule):
         predicted_patch_list = []
         target_patch_list = []
         patches = divide_ts_into_patches(batch['ts'], self.patch_len)
+
+        if patches.shape[1] == 1:  # Skip samples with only 1 patch since they can't be used for prediction
+            print(f"Skipping batch {batch_idx} with only one patch")
+            return None
+
         for context_patches, target_patch in teacher_forcing_pairs_generator(patches):
             predicted_patch = self.forward(context_patches)  
 
@@ -86,24 +91,34 @@ class BaseNextPatchForecaster(pl.LightningModule):
         )
         
         # Log metrics
-        self.log(f'{mode}_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log(f'{mode}_mse', metrics['mse'], on_step=False, on_epoch=True)
-        self.log(f'{mode}_mae', metrics['mae'], on_step=False, on_epoch=True)
-        self.log(f'{mode}_rmse', metrics['rmse'], on_step=False, on_epoch=True)
+        self.log_metric(f'{mode}_loss', loss)
+        self.log_metric(f'{mode}_mse', metrics['mse'])
+        self.log_metric(f'{mode}_mae', metrics['mae'])
+        self.log_metric(f'{mode}_rmse', metrics['rmse'])
 
         return loss    
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'train')
+        if loss is None:
+            return None
         return {'loss': loss}
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'val')
+        if loss is None:
+            return None
         return {'val_loss': loss}
 
     def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'test')
+        if loss is None:
+            return None
         return {'test_loss': loss}
     
     def loss(self, predicted_patch, target_patch):
         return F.mse_loss(predicted_patch, target_patch)
+    
+    def log_metric(self, metric_name: str, value: float):
+        self.logger.experiment.log_metric(self.logger.run_id, metric_name, value)
+
