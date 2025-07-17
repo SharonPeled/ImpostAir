@@ -1,7 +1,7 @@
 project:
-  experiment_name: "patch_transformer_progressive_scat"
+  experiment_name: "SCAT_patch_transformer_debug"
   run_name: "run1"
-  seed: 42
+  seed: 123
 
 paths:  # main relative paths
   data_dir: "./sandbox/SCAT_unzipped"
@@ -18,25 +18,22 @@ transformations:
   normalization: 
     type: "standard"
     params:
-      mean: [480000, 300, 75, 1100, 500]  # Mean for each channel
-      std: [500, 2.5, 10, 8, 40]   # Std for each channel
-  handle_missing: "forward_fill"
+      mean: [58.0, 15.0, 350.0, 100.0, 100.0]  # Mean for each channel
+      std: [1.0, 1.0, 100.0, 50.0, 50.0]   # Std for each channel
 
 data:
   class_path: "src.data.SCATDataset.SCATDataset"
   # Feature configuration
-  input_features: ['lat', 'lon', 'alt', 'vx', 'vy']  # assumes standardized timestamps
+  input_features: ['lat', 'lon', 'alt', 'vx', 'vy']  # TODO: it assumes standardized timestamps
   train_ratio: 0.7
   val_ratio: 0.15
 
 model:
   class_path: "src.models.PatchTransformerForecaster.PatchTransformerForecaster"
-  
-  # Patch-based parameters (inspired by PatchTST)
+
   patch_len: 16          # Length of each patch (subseries length)
   stride: 16             # Stride for patch extraction (non-overlapping patches)
   
-  # Architecture parameters (adapted from PatchTST defaults)
   d_model: 128           # Model dimension (smaller due to patch efficiency)
   n_heads: 16            # Number of attention heads (PatchTST uses 16)
   n_layers: 3            # Number of transformer layers (fewer needed with patches)
@@ -45,18 +42,9 @@ model:
   activation: "gelu"     # Activation function (GELU as in PatchTST)
   
   # Input/Output parameters
-  num_features: 5        # Number of input features (lat, lon, alt, vx, vy, timestamp)
+  num_features: 5        # Number of input features (lat, lon, alt, vx, vy) - not including timestamp
   max_num_patches: 300    # Maximum number of patches for positional encoding
-  
-  # Progressive training parameters
   context_length: 320    # Maximum context length (20 patches * 16 timesteps)
-  # Note: Training generates samples with 1 to 20 context patches
-  # Sample 1: 1 patch (16 timesteps) -> predict patch 2
-  # Sample 2: 2 patches (32 timesteps) -> predict patch 3
-  # ...
-  # Sample 20: 20 patches (320 timesteps) -> predict patch 21
-  
-  # Positional encoding
   pos_encoding_type: "learnable"  # "learnable" or "sinusoidal"
 
 training:
@@ -64,7 +52,7 @@ training:
   accumulate_grad_batches: 10  # number of batches to accumulate before updating the model
   
   # Training parameters
-  max_epochs: 2
+  max_epochs: 15
   learning_rate: 0.0001     # PatchTST uses 1e-4
   weight_decay: 0.01        # L2 regularization as in PatchTST
   gradient_clip_val: 1.0
@@ -78,4 +66,5 @@ training:
   autoregressive_inference: true  # Pure autoregressive during inference
 
 debug:
-  sample_size: 30
+  # activate: true
+  sample_size: # 30

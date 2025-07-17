@@ -38,7 +38,7 @@ class SCATDataset(AbstractDataset):
                 
                 # Extract altitude
                 if 'I062/136' in plot:
-                    if 'altitude' in input_features:
+                    if 'alt' in input_features:
                         point['alt'] = plot['I062/136'].get('measured_flight_level')
                 
                 # Extract timestamp

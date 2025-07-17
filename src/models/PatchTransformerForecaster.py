@@ -93,6 +93,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
             next_patch_pred: [batch_size, patch_len * num_features]
         """
         batch_size, num_patches, patch_dim = context_patches.shape
+        assert self.patch_embedding.projection.weight.isnan().sum() == 0
         
         # Patch embedding + positional encoding
         embedded = self.patch_embedding(context_patches)  # [batch, num_patches, d_model]

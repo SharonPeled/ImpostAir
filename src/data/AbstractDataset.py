@@ -24,15 +24,18 @@ class AbstractDataset(Dataset):
         """Load and return a single trajectory."""
         file_path = self.df.iloc[idx]['path']
 
+        if file_path == 'sandbox/SCAT_unzipped/106834.json':
+            print(file_path)
+
         df_trajectory = self.load_trajectory(file_path)
 
-        if 'timestamp' in self.config['data']['input_features']:
-            df_trajectory = df_trajectory.drop('timestamp', axis=1)
+        df_trajectory.drop(['timestamp', 'file_id'], axis=1, errors='ignore', inplace=True)
         
         ts = torch.tensor(df_trajectory.values).float()
         if self.transform:
             ts = self.transform(ts)
         return {
+            'path': file_path,
             'ts': ts
         }
     

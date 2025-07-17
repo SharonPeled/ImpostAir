@@ -4,7 +4,7 @@ from pathlib import Path
 from torchvision import transforms
 import datetime
 from lightning.pytorch.loggers import MLFlowLogger
-
+import torch
 
 from src.data.GeneralTrajectoryDataModule import GeneralTrajectoryDataModule
 from src.objects.GlobalStandardNormalizer import GlobalStandardNormalizer
@@ -17,6 +17,8 @@ def run_training(config):
     # Set random seed for reproducibility
     pl.seed_everything(config['project']['seed'])
     timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H%M%S')
+
+    torch.autograd.set_detect_anomaly(True)
 
     # initialize transforms
     transform_list = []

@@ -68,8 +68,12 @@ class BaseNextPatchForecaster(pl.LightningModule):
         target_patch_list = []
         patches = divide_ts_into_patches(batch['ts'], self.patch_len)
 
-        if patches.shape[1] == 1:  # Skip samples with only 1 patch since they can't be used for prediction
-            print(f"Skipping batch {batch_idx} with only one patch")
+        if patches.shape[1] == 1:  
+            print(f"Skipping batch {batch_idx} with only one patch.")
+            return None
+
+        if torch.isnan(patches).any():
+            print(f"Skipping batch {batch_idx} with nan values.")
             return None
 
         for context_patches, target_patch in teacher_forcing_pairs_generator(patches):
@@ -95,7 +99,9 @@ class BaseNextPatchForecaster(pl.LightningModule):
         self.log_metric(f'{mode}_mse', metrics['mse'])
         self.log_metric(f'{mode}_mae', metrics['mae'])
         self.log_metric(f'{mode}_rmse', metrics['rmse'])
-
+        if torch.isnan(loss):
+            print(loss)
+        print(loss)
         return loss    
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
