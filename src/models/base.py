@@ -73,6 +73,7 @@ class BaseNextPatchForecaster(pl.LightningModule):
             return None
 
         if torch.isnan(patches).any():
+            # TODO: handle this case better
             print(f"Skipping batch {batch_idx} with nan values.")
             return None
 
@@ -99,27 +100,25 @@ class BaseNextPatchForecaster(pl.LightningModule):
         self.log_metric(f'{mode}_mse', metrics['mse'])
         self.log_metric(f'{mode}_mae', metrics['mae'])
         self.log_metric(f'{mode}_rmse', metrics['rmse'])
-        if torch.isnan(loss):
-            print(loss)
-        print(loss)
+
         return loss    
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'train')
         if loss is None:
-            return None
+            return {}
         return {'loss': loss}
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'val')
         if loss is None:
-            return None
+            return {}
         return {'val_loss': loss}
 
     def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'test')
         if loss is None:
-            return None
+            return {}
         return {'test_loss': loss}
     
     def loss(self, predicted_patch, target_patch):
