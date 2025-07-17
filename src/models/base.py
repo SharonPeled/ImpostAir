@@ -106,19 +106,19 @@ class BaseNextPatchForecaster(pl.LightningModule):
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'train')
         if loss is None:
-            return {}
+            return None
         return {'loss': loss}
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'val')
         if loss is None:
-            return {}
+            return None
         return {'val_loss': loss}
 
     def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
         loss = self.general_step(batch, batch_idx, 'test')
         if loss is None:
-            return {}
+            return None
         return {'test_loss': loss}
     
     def loss(self, predicted_patch, target_patch):
