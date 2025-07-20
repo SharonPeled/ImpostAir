@@ -63,13 +63,14 @@ class BaseNextPatchForecaster(pl.LightningModule):
         }
     
     def general_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
+        print(batch['path'])
         loss_list = []
         predicted_patch_list = []
         target_patch_list = []
         patches = divide_ts_into_patches(batch['ts'], self.patch_len)
 
-        if patches.shape[1] == 1:  
-            print(f"Skipping batch {batch_idx} with only one patch.")
+        if patches.shape[1] <= 1:  
+            print(f"Skipping batch {batch_idx} with not enough time steps.")
             return None
 
         if torch.isnan(patches).any():

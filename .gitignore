@@ -73,3 +73,5 @@ notebooks/*.csv
 config
 !config/example_config.yaml
 *.out
+slurm_logs/
+slurm_scripts/
