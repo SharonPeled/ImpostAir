@@ -63,7 +63,6 @@ class BaseNextPatchForecaster(pl.LightningModule):
         }
     
     def general_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
-        print(batch['path'])
         loss_list = []
         predicted_patch_list = []
         target_patch_list = []
