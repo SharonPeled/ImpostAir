@@ -20,20 +20,20 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
     """
     
     def __init__(self, config: Dict[str, Any]):
-        super(PatchTransformerForecaster, self).__init__(config)
+        super(PatchTransformerForecaster, self).__init__(config, patch_len=config['model']['patch_transformer_params']['patch_len'])
         
         # Model architecture parameters
-        self.d_model = config['model']['d_model']
-        self.n_heads = config['model']['n_heads']
-        self.n_layers = config['model']['n_layers']
-        self.d_ff = config['model']['d_ff']
-        self.dropout = config['model']['dropout']
-        self.activation = config['model']['activation']
-        self.num_features = config['model']['num_features']
-        self.max_num_patches = config['model']['max_num_patches']
-        self.context_length = config['model']['context_length']
-        self.pos_encoding_type = config['model']['pos_encoding_type']
-        self.patch_nan_tolerance_percentage = config['model']['patch_nan_tolerance_percentage']
+        self.d_model = config['model']['patch_transformer_params']['d_model']
+        self.n_heads = config['model']['patch_transformer_params']['n_heads']
+        self.n_layers = config['model']['patch_transformer_params']['n_layers']
+        self.d_ff = config['model']['patch_transformer_params']['d_ff']
+        self.dropout = config['model']['patch_transformer_params']['dropout']
+        self.activation = config['model']['patch_transformer_params']['activation']
+        self.num_features = config['model']['patch_transformer_params']['num_features']
+        self.max_num_patches = config['model']['patch_transformer_params']['max_num_patches']
+        self.context_length = config['model']['patch_transformer_params']['context_length']
+        self.pos_encoding_type = config['model']['patch_transformer_params']['pos_encoding_type']
+        self.patch_nan_tolerance_percentage = config['model']['patch_transformer_params']['patch_nan_tolerance_percentage']
         
         # Build model
         self._build_model()
@@ -108,7 +108,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         causal_mask = torch.tril(torch.ones(
             num_patches, num_patches,
             device=context_patches.device
-        )).bool()  # [num_patches, num_patches]
+        ))  # [num_patches, num_patches]
 
         # Pass through transformer decoder
         transformer_output = self.transformer_decoder(
@@ -140,7 +140,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
             nan_counts = mask_patches.sum(dim=-1).float()  # [batch_size, num_patches]
             patch_nan_percentage = nan_counts / self.patch_len  # [batch_size, num_patches]
             key_padding_mask = patch_nan_percentage > self.patch_nan_tolerance_percentage  # [batch_size, num_patches], True = ignore
-            
+
         return key_padding_mask
 
     
