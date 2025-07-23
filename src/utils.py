@@ -20,15 +20,15 @@ def get_class_from_path(class_path):
     return Class
 
 
-def compute_patch_metrics(predicted_patches: torch.Tensor, 
-                         target_patches: torch.Tensor) -> dict:
+def compute_patch_metrics(predicted_ts: torch.Tensor, 
+                         target_ts: torch.Tensor, mask_ts: torch.Tensor = None) -> dict:
     """
     Compute comprehensive metrics for patch prediction.
 
     Args:
-        predicted_patches: [num_patches, patch_len, num_features]
-        target_patches: [num_patches, patch_len, num_features]
-
+        predicted_ts: [num_steps, num_features]
+        target_ts: [num_steps, num_features]
+        mask_ts: [num_steps, ] boolean mask (True where value is NaN/imputed/pad)
     Returns:
         Dictionary containing:
             mse (float): Mean squared error across all patches
@@ -36,15 +36,19 @@ def compute_patch_metrics(predicted_patches: torch.Tensor,
             rmse (float): Root mean squared error across all patches
             per_feature_mse (list): MSE per feature, averaged over patches and timesteps
     """
+    if mask_ts is not None:
+        valid_mask = ~mask_ts
+        predicted_ts = predicted_ts[valid_mask]
+        target_ts = target_ts[valid_mask]
+    
     # Overall metrics
-    mse = F.mse_loss(predicted_patches.view(-1), target_patches.view(-1))  # MSE over all patches
-    mae = F.l1_loss(predicted_patches.view(-1), target_patches.view(-1))   # MAE over all patches
+    mse = F.mse_loss(predicted_ts.view(-1), target_ts.view(-1))  
+    mae = F.l1_loss(predicted_ts.view(-1), target_ts.view(-1)) 
     rmse = torch.sqrt(mse)
 
-    # Per-feature MSE: Compute MSE for each feature, averaged over all patches and all timesteps
-    # [num_patches, patch_len, num_features] -> [num_patches, patch_len, num_features]
-    per_feature_mse = F.mse_loss(predicted_patches, target_patches, reduction='none')  # [num_patches, patch_len, num_features]
-    per_feature_mse = per_feature_mse.mean(dim=(0, 1))  # Average over patches and time steps for each feature
+    # Per-feature MSE: Compute MSE for each feature, averaged over all timesteps
+    per_feature_mse = F.mse_loss(predicted_ts, target_ts, reduction='none')  # [num_steps, num_features]
+    per_feature_mse = per_feature_mse.mean(dim=0)  # Average over timesteps for each feature
 
     return {
         'mse': mse.item(),

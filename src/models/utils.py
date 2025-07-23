@@ -21,18 +21,20 @@ def divide_ts_into_patches(ts: torch.Tensor, patch_len: int) -> torch.Tensor:
 
 
 def teacher_forcing_pairs_generator(
-    ts: torch.Tensor, patch_len: int
-) -> Generator[Tuple[torch.Tensor, torch.Tensor], Any, Any]:
+    ts: torch.Tensor, patch_len: int, ts_mask: torch.Tensor = None
+) -> Generator[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor], Any, Any]:
     """
     Generate a generator of context-target pairs for teacher forcing over the raw time series.
 
     Args:
         ts: [batch_size, num_steps, num_features]
         patch_len: int, length of each patch
-
+        ts_mask: [batch_size, num_steps] boolean mask (True where value is NaN/imputed/pad)
     Yields:
         context: [batch_size, context_steps, num_features]
         target_patch: [batch_size, patch_len, num_features]
+        context_mask: [batch_size, context_steps] boolean mask (True where value is NaN/imputed/pad)
+        target_patch_mask: [batch_size, patch_len] boolean mask (True where value is NaN/imputed/pad)
     """
     batch_size, num_steps, num_features = ts.shape
     num_patches = num_steps // patch_len  # Note: it assumes num_steps is divisible by patch_len, otherwise it will discard the last incomplete patch 
@@ -42,4 +44,9 @@ def teacher_forcing_pairs_generator(
         target_end = target_start + patch_len
         context = ts[:, :context_end, :]  # [batch_size, context_steps, num_features]
         target_patch = ts[:, target_start:target_end, :]  # [batch_size, patch_len, num_features]
-        yield context, target_patch
+        if ts_mask is None:
+            yield context, target_patch, None, None
+        else:
+            context_mask = ts_mask[:, :context_end]  # [batch_size, context_steps]
+            target_patch_mask = ts_mask[:, target_start:target_end]  # [batch_size, patch_len]
+            yield context, target_patch, context_mask, target_patch_mask

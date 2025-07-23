@@ -66,22 +66,30 @@ class BaseNextPatchForecaster(pl.LightningModule):
         loss_list = []
         predicted_patch_list = []
         target_patch_list = []
-        
-        for context, target_patch in teacher_forcing_pairs_generator(batch['ts'], self.patch_len):
-            predicted_patch = self.forward(context)  
+        target_patch_mask_list = []
+        ts = batch['ts']
+        ts_mask = batch['nan_mask'] if 'nan_mask' in batch else None
+        for context, target_patch, context_mask, target_patch_mask in teacher_forcing_pairs_generator(ts, self.patch_len, ts_mask):
+            predicted_patch = self.forward(context, context_mask)  
 
             loss = self.loss(predicted_patch, target_patch)        
             loss_list.append(loss)
 
-            predicted_patch_list.append(predicted_patch)
-            target_patch_list.append(target_patch)
+            predicted_patch_list.append(predicted_patch.squeeze(0).detach().cpu())
+            target_patch_list.append(target_patch.squeeze(0).cpu())
+            target_patch_mask_list.append(target_patch_mask.squeeze(0).cpu())
+
+        if len(loss_list) == 0:
+            print(f"Failed to generate any patches for unclear reason, skipping batch {batch_idx}.")
+            return None
         
         loss = sum(loss_list) / len(loss_list)
 
         # Compute metrics
         metrics = compute_patch_metrics(
-            torch.cat(predicted_patch_list, dim=0), 
-            torch.cat(target_patch_list, dim=0)
+            torch.stack(predicted_patch_list, dim=0), 
+            torch.stack(target_patch_list, dim=0),
+            torch.stack(target_patch_mask_list, dim=0)
         )
         
         # Log metrics

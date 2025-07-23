@@ -33,6 +33,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         self.max_num_patches = config['model']['max_num_patches']
         self.context_length = config['model']['context_length']
         self.pos_encoding_type = config['model']['pos_encoding_type']
+        self.patch_nan_tolerance_percentage = config['model']['patch_nan_tolerance_percentage']
         
         # Build model
         self._build_model()
@@ -83,46 +84,64 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         # Layer normalization for final output
         self.output_norm = nn.LayerNorm(self.d_model)
     
-    def forward(self, context: torch.Tensor) -> torch.Tensor:
+    def forward(self, context: torch.Tensor, context_mask: torch.Tensor = None) -> torch.Tensor:
         """
         Forward pass through the patch transformer.
-        
+
         Args:
             context: [batch_size, context_steps, num_features]
-        
+            context_mask: [batch_size, context_steps] boolean mask (True where value is NaN/imputed/pad)
+
         Returns:
-            next_patch_pred: [batch_size, patch_len * num_features]
+            next_patch_pred: [batch_size, patch_len, num_features]
         """
         context_patches = divide_ts_into_patches(context, self.patch_len)
         batch_size, num_patches, patch_dim = context_patches.shape
-        
+
         # Patch embedding + positional encoding
         embedded = self.patch_embedding(context_patches)  # [batch, num_patches, d_model]
         embedded = self.pos_encoding(embedded)  # [batch, num_patches, d_model]
-        
+
+        key_padding_mask = self._get_key_padding_mask(context_mask)
+
+        # Causal mask for autoregressive decoding
         causal_mask = torch.tril(torch.ones(
-            num_patches, num_patches, 
+            num_patches, num_patches,
             device=context_patches.device
-        ))
-        
+        )).bool()  # [num_patches, num_patches]
+
         # Pass through transformer decoder
-        # In decoder-only mode
         transformer_output = self.transformer_decoder(
             tgt=embedded,
             memory=embedded,
             tgt_mask=causal_mask,
-            memory_mask=causal_mask
+            memory_mask=causal_mask,
+            tgt_key_padding_mask=key_padding_mask,
+            memory_key_padding_mask=key_padding_mask
         )  # [batch, num_patches, d_model]
-        
+
         # Extract final patch representation (last position)
         final_repr = transformer_output[:, -1, :]  # [batch, d_model]
         final_repr = self.output_norm(final_repr)
-        
+
         # Predict next patch
         next_patch_pred = self.next_patch_head(final_repr)  # [batch, patch_len * num_features]
-        
-        return next_patch_pred.reshape(batch_size, self.patch_len, self.num_features)
 
+        return next_patch_pred.reshape(batch_size, self.patch_len, self.num_features)
+    
+    def _get_key_padding_mask(self, context_mask: torch.Tensor) -> torch.Tensor:
+        """
+        Get key padding mask for the transformer decoder.
+        context_mask: [batch_size, context_steps] boolean mask (True where value is NaN/imputed/pad)
+        """
+        key_padding_mask = None
+        if context_mask is not None:
+            mask_patches = divide_ts_into_patches(context_mask.unsqueeze(-1), self.patch_len)  # [batch, num_patches, patch_len]
+            nan_counts = mask_patches.sum(dim=-1).float()  # [batch_size, num_patches]
+            patch_nan_percentage = nan_counts / self.patch_len  # [batch_size, num_patches]
+            key_padding_mask = patch_nan_percentage > self.patch_nan_tolerance_percentage  # [batch_size, num_patches], True = ignore
+            
+        return key_padding_mask
 
     
     
