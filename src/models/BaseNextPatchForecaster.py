@@ -10,7 +10,7 @@ from src.utils import compute_patch_metrics
 
 class BaseNextPatchForecaster(pl.LightningModule):
     """Base class for time series forecasting models."""
-    
+        
     def __init__(self, config: Dict[str, Any]):
         super().__init__()
         self.config = config
@@ -19,7 +19,6 @@ class BaseNextPatchForecaster(pl.LightningModule):
         self.weight_decay = config['training']['weight_decay']
 
         self.patch_len = config['model']['patch_len']
-        self.stride = config['model']['stride']
 
         self.save_hyperparameters(config)
     
