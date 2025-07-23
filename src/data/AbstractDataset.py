@@ -28,7 +28,7 @@ class AbstractDataset(Dataset):
         df_trajectory.drop(['timestamp', 'file_id'], axis=1, errors='ignore', inplace=True)
         
         ts = torch.tensor(df_trajectory.values).float()
-        nan_mask = torch.isnan(ts)  # Create a mask where values are NaN
+        nan_mask = torch.isnan(ts).any(-1)  # Create a mask where values are NaN
 
         sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path}
         if self.transform:
