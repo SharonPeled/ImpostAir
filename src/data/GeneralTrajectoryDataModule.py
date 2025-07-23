@@ -40,7 +40,7 @@ class GeneralTrajectoryDataModule(pl.LightningDataModule):
 
         # Split by trajectory using configurable ratios
         total_ids = len(df)
-        train_ratio = self.config['data']['train_ratio']  # TODO: support cross validation as well
+        train_ratio = self.config['data']['train_ratio']
         val_ratio = self.config['data']['val_ratio']
         train_split = int(train_ratio * total_ids)
         val_split = int((train_ratio + val_ratio) * total_ids)

@@ -11,3 +11,4 @@ plotly
 tqdm
 notebook
 jupyter 
+pypots

@@ -13,7 +13,7 @@ def divide_ts_into_patches(ts: torch.Tensor, patch_len: int) -> torch.Tensor:
             patches: [batch_size, num_patches, patch_len * num_features]
         """
         batch_size, num_steps, num_features = ts.shape
-        num_patches = num_steps // patch_len  # TODO: currently discarding the last patch if it's not a full patch, consider padding it
+        num_patches = num_steps // patch_len  # Note: it assumes num_steps is divisible by patch_len, otherwise it will discard the last patch 
         ts = ts[:, :num_patches * patch_len, :]  # Shape: [batch_size, num_patches * patch_len, num_features]
         patches = ts.reshape(batch_size, num_patches, patch_len * num_features)
         return patches

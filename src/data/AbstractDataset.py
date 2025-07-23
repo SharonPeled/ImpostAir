@@ -25,16 +25,15 @@ class AbstractDataset(Dataset):
         file_path = self.df.iloc[idx]['path']
 
         df_trajectory = self.load_trajectory(file_path)
-
         df_trajectory.drop(['timestamp', 'file_id'], axis=1, errors='ignore', inplace=True)
         
         ts = torch.tensor(df_trajectory.values).float()
+        nan_mask = torch.isnan(ts)  # Create a mask where values are NaN
+
+        sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path}
         if self.transform:
-            ts = self.transform(ts)
-        return {
-            'path': file_path,
-            'ts': ts
-        }
+            sample = self.transform(sample)
+        return sample
     
     @abstractmethod
     def load_trajectory(self, file_path: str):

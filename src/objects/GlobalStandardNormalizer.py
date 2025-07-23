@@ -16,13 +16,12 @@ class GlobalStandardNormalizer:
     def __call__(self, sample):
         """
         Applies normalization on the given sample (time series).
-        
         Args:
-            sample (tensor): The input tensor with shape [time_steps, num_features].
-        
+            sample (dict): Dict with keys 'ts' (tensor) and 'nan_mask' (tensor)
         Returns:
-            tensor: The normalized tensor with the same shape as the input.
+            dict: Updated dict with normalized 'ts' and unchanged 'nan_mask'.
         """
-        # Normalize each feature independently (across time steps)
-        normalized_sample = (sample - self.mean) / self.std
-        return normalized_sample
+        ts = sample['ts']
+        normalized_ts = (ts - self.mean) / self.std
+        sample['ts'] = normalized_ts
+        return sample
