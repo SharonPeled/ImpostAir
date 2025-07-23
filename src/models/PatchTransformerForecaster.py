@@ -98,31 +98,18 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         embedded = self.patch_embedding(context_patches)  # [batch, num_patches, d_model]
         embedded = self.pos_encoding(embedded)  # [batch, num_patches, d_model]
         
-
-        # Handling the case of a single patch
-        if num_patches == 1:
-            # If there's only one patch, we don't need a mask for causal self-attention
-            float_mask = None
-        else:
-            # Simple causal mask for multi-patch case
-            attention_mask = torch.tril(torch.ones(
-                num_patches, num_patches, 
-                dtype=torch.bool, 
-                device=context_patches.device
-            ))  # [num_patches, num_patches]
-    
-            # Convert boolean mask to float mask for transformer (True -> 0.0, False -> -inf)
-            float_mask = attention_mask.float()
-            float_mask = float_mask.masked_fill(attention_mask == False, float('-inf'))
-            float_mask = float_mask.masked_fill(attention_mask == True, 0.0)
+        causal_mask = torch.tril(torch.ones(
+            num_patches, num_patches, 
+            device=context_patches.device
+        ))
         
         # Pass through transformer decoder
         # In decoder-only mode
         transformer_output = self.transformer_decoder(
             tgt=embedded,
             memory=embedded,
-            tgt_mask=float_mask,
-            memory_mask=float_mask
+            tgt_mask=causal_mask,
+            memory_mask=causal_mask
         )  # [batch, num_patches, d_model]
         
         # Extract final patch representation (last position)
