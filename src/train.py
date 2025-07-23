@@ -19,7 +19,9 @@ def run_training(config):
     torch.autograd.set_detect_anomaly(True)
 
     # initialize transforms
+    print("Initializing transforms...")
     transform = compose_transforms(config)
+    print(transform)
     
     # Initialize data module
     print("Setting up data module...")
