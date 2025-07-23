@@ -35,7 +35,7 @@ class PaddingTransform:
             # Calculate padding needed at start
             pad_size = self.patch_len - (T % self.patch_len)
             ts = F.pad(ts, (0, 0, pad_size, 0), mode='constant', value=torch.nan)
-            nan_mask = F.pad(nan_mask, (0, 0, pad_size, 0), mode='constant', value=True)
+            nan_mask = F.pad(nan_mask, (pad_size, 0), mode='constant', value=True)
         
         sample['ts'] = ts
         sample['nan_mask'] = nan_mask
