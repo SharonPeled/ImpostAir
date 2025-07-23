@@ -2,6 +2,16 @@
 import torch
 import torch.nn.functional as F
 import importlib
+from torchvision import transforms
+
+
+def compose_transforms(config):
+    transforms_list = []
+    for transform_name in config['transformations']:
+        transform_config = config['transformations'][transform_name]
+        transform_class = get_class_from_path(transform_config['class_path'])
+        transforms_list.append(transform_class(**transform_config['params']))
+    return transforms.Compose(transforms_list)
 
 
 def get_class_from_path(class_path):

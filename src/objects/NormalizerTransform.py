@@ -1,8 +1,8 @@
 import torch
 
 
-class GlobalStandardNormalizer:
-    def __init__(self, mean, std):
+class NormalizerTransform:
+    def __init__(self, type_, mean, std):
         """
         Initializes the normalization transform with the provided means and stds for each feature.
         
@@ -10,6 +10,8 @@ class GlobalStandardNormalizer:
             mean (list or tensor): The mean values for each feature (length should match number of features).
             std (list or tensor): The std values for each feature (length should match number of features).
         """
+        if type_ != "global_standard":
+            raise NotImplementedError("Only global standard normalization is implemented yet")
         self.mean = torch.tensor(mean)
         self.std = torch.tensor(std)
 

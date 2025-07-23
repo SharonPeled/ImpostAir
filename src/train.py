@@ -1,14 +1,12 @@
 import lightning as pl
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from pathlib import Path
-from torchvision import transforms
 import datetime
 from lightning.pytorch.loggers import MLFlowLogger
 import torch
 
 from src.data.GeneralTrajectoryDataModule import GeneralTrajectoryDataModule
-from src.objects.GlobalStandardNormalizer import GlobalStandardNormalizer
-from src.utils import get_class_from_path
+from src.utils import get_class_from_path, compose_transforms
 
 
 def run_training(config):
@@ -21,14 +19,8 @@ def run_training(config):
     torch.autograd.set_detect_anomaly(True)
 
     # initialize transforms
-    transform_list = []
-    if config['transformations']['normalization']['type'] == 'standard':
-        mean = config['transformations']['normalization']['params']['mean']
-        std = config['transformations']['normalization']['params']['std']
-        transform_list.append(GlobalStandardNormalizer(mean=mean, std=std))
-
-    transform = transforms.Compose(transform_list)
-
+    transform = compose_transforms(config)
+    
     # Initialize data module
     print("Setting up data module...")
     data_module = GeneralTrajectoryDataModule(config=config, transform=transform)
