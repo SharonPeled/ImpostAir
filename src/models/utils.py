@@ -13,24 +13,33 @@ def divide_ts_into_patches(ts: torch.Tensor, patch_len: int) -> torch.Tensor:
             patches: [batch_size, num_patches, patch_len * num_features]
         """
         batch_size, num_steps, num_features = ts.shape
-        num_patches = num_steps // patch_len  # Note: it assumes num_steps is divisible by patch_len, otherwise it will discard the last patch 
+        assert num_steps % patch_len == 0, "num_steps must be divisible by patch_len"
+        num_patches = num_steps // patch_len 
         ts = ts[:, :num_patches * patch_len, :]  # Shape: [batch_size, num_patches * patch_len, num_features]
         patches = ts.reshape(batch_size, num_patches, patch_len * num_features)
         return patches
 
 
-def teacher_forcing_pairs_generator(patches: torch.Tensor) -> Generator[Tuple[torch.Tensor, torch.Tensor], Any, Any]:
-        """
-        Generate a generator of context-target pairs for teacher forcing over patches.
+def teacher_forcing_pairs_generator(
+    ts: torch.Tensor, patch_len: int
+) -> Generator[Tuple[torch.Tensor, torch.Tensor], Any, Any]:
+    """
+    Generate a generator of context-target pairs for teacher forcing over the raw time series.
 
-        Args:
-            patches: [batch_size, num_patches, patch_len * num_features]
+    Args:
+        ts: [batch_size, num_steps, num_features]
+        patch_len: int, length of each patch
 
-        Returns: 
-            Generator of context-target pairs for teacher forcing.
-        """
-        _, num_patches, _ = patches.shape
-        for i in range(num_patches - 1):
-            context_patches = patches[:, :i+1, :]
-            target_patch = patches[:, i + 1, :]
-            yield context_patches, target_patch
+    Yields:
+        context: [batch_size, context_steps, num_features]
+        target_patch: [batch_size, patch_len, num_features]
+    """
+    batch_size, num_steps, num_features = ts.shape
+    num_patches = num_steps // patch_len  # Note: it assumes num_steps is divisible by patch_len, otherwise it will discard the last incomplete patch 
+    for i in range(num_patches - 1):
+        context_end = (i + 1) * patch_len
+        target_start = context_end
+        target_end = target_start + patch_len
+        context = ts[:, :context_end, :]  # [batch_size, context_steps, num_features]
+        target_patch = ts[:, target_start:target_end, :]  # [batch_size, patch_len, num_features]
+        yield context, target_patch

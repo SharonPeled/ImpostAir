@@ -5,9 +5,10 @@ from typing import Dict, Any, Optional, Generator, Tuple
 import math
 import torch.nn.functional as F
 
-from src.models.base import BaseNextPatchForecaster
+from src.models.BaseNextPatchForecaster import BaseNextPatchForecaster
 from src.models.positional_encoding import PositionalEncoding
 from src.models.patch_embedding import PatchEmbedding
+from src.models.utils import divide_ts_into_patches
 
 
 class PatchTransformerForecaster(BaseNextPatchForecaster):
@@ -82,16 +83,17 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         # Layer normalization for final output
         self.output_norm = nn.LayerNorm(self.d_model)
     
-    def forward(self, context_patches: torch.Tensor) -> torch.Tensor:
+    def forward(self, context: torch.Tensor) -> torch.Tensor:
         """
         Forward pass through the patch transformer.
         
         Args:
-            context_patches: [batch_size, num_context_patches, patch_len * num_features]
+            context: [batch_size, context_steps, num_features]
         
         Returns:
             next_patch_pred: [batch_size, patch_len * num_features]
         """
+        context_patches = divide_ts_into_patches(context, self.patch_len)
         batch_size, num_patches, patch_dim = context_patches.shape
         
         # Patch embedding + positional encoding
@@ -119,7 +121,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         # Predict next patch
         next_patch_pred = self.next_patch_head(final_repr)  # [batch, patch_len * num_features]
         
-        return next_patch_pred
+        return next_patch_pred.reshape(batch_size, self.patch_len, self.num_features)
 
 
     

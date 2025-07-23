@@ -66,19 +66,9 @@ class BaseNextPatchForecaster(pl.LightningModule):
         loss_list = []
         predicted_patch_list = []
         target_patch_list = []
-        patches = divide_ts_into_patches(batch['ts'], self.patch_len)
-
-        if patches.shape[1] <= 1:  
-            print(f"Skipping batch {batch_idx} with not enough time steps.")
-            return None
-
-        if torch.isnan(patches).any():
-            # TODO: handle this case better
-            print(f"Skipping batch {batch_idx} with nan values.")
-            return None
-
-        for context_patches, target_patch in teacher_forcing_pairs_generator(patches):
-            predicted_patch = self.forward(context_patches)  
+        
+        for context, target_patch in teacher_forcing_pairs_generator(batch['ts'], self.patch_len):
+            predicted_patch = self.forward(context)  
 
             loss = self.loss(predicted_patch, target_patch)        
             loss_list.append(loss)
@@ -91,8 +81,7 @@ class BaseNextPatchForecaster(pl.LightningModule):
         # Compute metrics
         metrics = compute_patch_metrics(
             torch.cat(predicted_patch_list, dim=0), 
-            torch.cat(target_patch_list, dim=0),
-            self.patch_len
+            torch.cat(target_patch_list, dim=0)
         )
         
         # Log metrics
