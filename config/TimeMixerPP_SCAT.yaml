@@ -1,0 +1,102 @@
+project:
+  experiment_name: "SCAT_TMPP_debug"
+  run_name: "run1"
+  seed: 123
+
+paths:  # main relative paths
+  data_dir: "./sandbox/SCAT_unzipped"
+  mlflow_uri: "./mlruns"
+  checkpoint_dir: "./models"
+  predictions_dir: "./predictions"
+
+compute:
+  accelerator: "gpu"
+  devices: 1
+  num_workers: 4
+
+transformations:
+  normalization: 
+    class_path: "src.objects.NormalizerTransform.NormalizerTransform"  
+    params:
+      type_: "global_standard"  # to not overide type keyword
+      mean: [58.0, 15.0, 350.0, 100.0, 100.0]  # Mean for each channel
+      std: [1.0, 1.0, 100.0, 50.0, 50.0]   # Std for each channel
+  padding:
+    class_path: "src.objects.PaddingTransform.PaddingTransform"
+    params: 
+      objective: "patching"
+      patch_len: 16
+      type_: "nan_padding"
+  imputation:
+    class_path: "src.objects.ImputationTransform.ImputationTransform"
+    params:
+      type_: "constant"
+      value: 0.0
+  # time_standardization: # TODO: implement
+
+
+data:
+  class_path: "src.data.SCATDataset.SCATDataset"
+  # Feature configuration
+  input_features: ['lat', 'lon', 'alt', 'vx', 'vy']
+  output_features: ['lat', 'lon', 'alt']
+  train_ratio: 0.7
+  val_ratio: 0.15
+
+model:
+  class_path: "src.models.TimeMixerPPForecaster.TimeMixerPPForecaster"
+  time_mixer_pp_params:
+    n_features: 5
+    n_layers: 2
+    d_model: 16
+    d_ffn: 16
+    n_heads: 2
+    dropout: 0.1
+    top_k: 3
+    n_kernels: 3
+    channel_mixing: true
+    channel_independence: false
+    downsampling_layers: 2
+    downsampling_window: 2
+    downsampling_method: "conv"
+    use_future_temporal_feature: false
+    use_norm: false
+    embed: "fixed"
+    freq: "h"
+    n_classes: null
+  patch_transformer_params:
+    patch_len: 16          # Length of each patch (subseries length)
+    d_model: 64            # Model dimension (smaller due to patch efficiency)
+    n_heads: 1             # Number of attention heads (PatchTST uses 16)
+    n_layers: 1            # Number of transformer layers (fewer needed with patches)
+    d_ff: 64               # Feed-forward dimension (2x d_model typical)
+    dropout: 0.1           # Dropout rate
+    activation: "gelu"     # Activation function (GELU as in PatchTST)
+    n_input_features: 16   # Should be equal to d_model of the backbone
+    n_output_features: 3   # Number of output features (lat, lon, alt)
+    max_n_patches: 300     # Maximum number of patches for positional encoding
+    context_length: 320    # Maximum context length (20 patches * 16 timesteps)
+    pos_encoding_type: "learnable"  # "learnable" or "sinusoidal"
+    patch_nan_tolerance_percentage: 0.5  # Tolerance for nan values in patches
+
+training:
+  batch_size: 1
+  accumulate_grad_batches: 10  # number of batches to accumulate before updating the model
+  
+  # Training parameters
+  max_epochs: 15
+  learning_rate: 0.0001     # PatchTST uses 1e-4
+  weight_decay: 0.01        # L2 regularization as in PatchTST
+  gradient_clip_val: 1.0
+  
+  # Early stopping
+  early_stopping_patience: 20   # Longer patience for patch-based training
+  early_stopping_monitor: "val_loss"
+  
+  # Progressive training parameters
+  teacher_forcing_ratio: 1.0    # Always use ground truth during training
+  autoregressive_inference: true  # Pure autoregressive during inference
+
+debug:
+  activate: true
+  sample_size: 30
