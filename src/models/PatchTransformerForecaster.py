@@ -134,9 +134,6 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         # Predict next patch
         next_patch_pred = self.next_patch_head(final_repr)  # [batch, patch_len * num_features]
 
-        if next_patch_pred.isnan().any():
-            print(f"Next patch prediction contains NaN, skipping batch {batch_idx}.")
-
         return next_patch_pred.reshape(batch_size, self.patch_len, self.n_output_features)
     
     def _get_key_padding_mask(self, context_mask: torch.Tensor) -> torch.Tensor:
