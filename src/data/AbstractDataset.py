@@ -30,7 +30,7 @@ class AbstractDataset(Dataset):
         ts = torch.tensor(df_trajectory.values).float()
         nan_mask = torch.isnan(ts).any(-1)  # Create a mask where values are NaN
 
-        sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path}
+        sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path, 'columns': list(df_trajectory.columns)}
         if self.transform:
             sample = self.transform(sample)
         return sample

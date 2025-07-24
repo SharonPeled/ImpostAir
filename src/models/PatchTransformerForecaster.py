@@ -29,7 +29,8 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         self.d_ff = config['model']['patch_transformer_params']['d_ff']
         self.dropout = config['model']['patch_transformer_params']['dropout']
         self.activation = config['model']['patch_transformer_params']['activation']
-        self.num_features = config['model']['patch_transformer_params']['n_input_features']
+        self.n_input_features = config['model']['patch_transformer_params']['n_input_features']
+        self.n_output_features = config['model']['patch_transformer_params']['n_output_features']
         self.max_num_patches = config['model']['patch_transformer_params']['max_n_patches']
         self.context_length = config['model']['patch_transformer_params']['context_length']
         self.pos_encoding_type = config['model']['patch_transformer_params']['pos_encoding_type']
@@ -49,7 +50,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         # Patch embedding layer
         self.patch_embedding = PatchEmbedding(
             patch_len=self.patch_len,
-            num_features=self.num_features,
+            num_features=self.n_input_features,
             d_model=self.d_model,
             dropout=self.dropout
         )
@@ -78,7 +79,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         )
         
         # Next patch prediction head
-        patch_output_dim = self.patch_len * self.num_features
+        patch_output_dim = self.patch_len * self.n_output_features
         self.next_patch_head = nn.Linear(self.d_model, patch_output_dim)
         
         # Layer normalization for final output
@@ -106,6 +107,10 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
 
         key_padding_mask = self._get_key_padding_mask(context_mask)
 
+        if key_padding_mask.all():
+            # all patches are invalid
+            return None
+
         # Causal mask for autoregressive decoding
         causal_mask = torch.tril(torch.ones(
             num_patches, num_patches,
@@ -129,7 +134,10 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         # Predict next patch
         next_patch_pred = self.next_patch_head(final_repr)  # [batch, patch_len * num_features]
 
-        return next_patch_pred.reshape(batch_size, self.patch_len, self.num_features)
+        if next_patch_pred.isnan().any():
+            print(f"Next patch prediction contains NaN, skipping batch {batch_idx}.")
+
+        return next_patch_pred.reshape(batch_size, self.patch_len, self.n_output_features)
     
     def _get_key_padding_mask(self, context_mask: torch.Tensor) -> torch.Tensor:
         """

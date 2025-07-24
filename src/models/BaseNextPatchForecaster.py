@@ -66,8 +66,15 @@ class BaseNextPatchForecaster(pl.LightningModule):
         target_patch_mask_list = []
         ts = batch['ts']
         ts_mask = batch['nan_mask'] if 'nan_mask' in batch else None
+        columns = [col[0] for col in batch['columns']]
+        columns_indexes = [columns.index(col) for col in self.config['data']['output_features']]
         for context, target_patch, context_mask, target_patch_mask in teacher_forcing_pairs_generator(ts, self.patch_len, ts_mask):
             predicted_patch = self.forward(context, context_mask)  
+            target_patch = target_patch[:, :, columns_indexes]
+
+            if predicted_patch is None:
+                # model failed to generate predictions due to invalid context
+                continue
 
             loss = self.loss(predicted_patch, target_patch)        
             loss_list.append(loss)
@@ -77,7 +84,7 @@ class BaseNextPatchForecaster(pl.LightningModule):
             target_patch_mask_list.append(target_patch_mask.squeeze(0).cpu())
 
         if len(loss_list) == 0:
-            print(f"Failed to generate any patches for unclear reason, skipping batch {batch_idx}.")
+            print(f"Failed to generate any patches, skipping batch {batch_idx}.")
             return None
         
         loss = sum(loss_list) / len(loss_list)
