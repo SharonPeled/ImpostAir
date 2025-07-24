@@ -29,8 +29,8 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         self.d_ff = config['model']['patch_transformer_params']['d_ff']
         self.dropout = config['model']['patch_transformer_params']['dropout']
         self.activation = config['model']['patch_transformer_params']['activation']
-        self.num_features = config['model']['patch_transformer_params']['num_features']
-        self.max_num_patches = config['model']['patch_transformer_params']['max_num_patches']
+        self.num_features = config['model']['patch_transformer_params']['n_input_features']
+        self.max_num_patches = config['model']['patch_transformer_params']['max_n_patches']
         self.context_length = config['model']['patch_transformer_params']['context_length']
         self.pos_encoding_type = config['model']['patch_transformer_params']['pos_encoding_type']
         self.patch_nan_tolerance_percentage = config['model']['patch_transformer_params']['patch_nan_tolerance_percentage']
@@ -95,6 +95,8 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         Returns:
             next_patch_pred: [batch_size, patch_len, num_features]
         """
+        assert not context.isnan().any(), "Context contains NaN"
+
         context_patches = divide_ts_into_patches(context, self.patch_len)
         batch_size, num_patches, patch_dim = context_patches.shape
 
