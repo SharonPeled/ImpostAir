@@ -21,17 +21,17 @@ transformations:
       type_: "global_standard"  # to not overide type keyword
       mean: [58.0, 15.0, 350.0, 100.0, 100.0]  # Mean for each channel
       std: [1.0, 1.0, 100.0, 50.0, 50.0]   # Std for each channel
-  # padding:
-  #   class_path: "src.objects.PaddingTransform.PaddingTransform"
-  #   params: 
-  #     objective: "patching"
-  #     patch_len: 16
-  #     type_: "nan_padding"
-  # imputation:
-  #   class_path: "src.objects.ImputationTransform.ImputationTransform"
-  #   params:
-  #     type_: "constant"
-  #     value: 0.0
+  padding:
+    class_path: "src.objects.PaddingTransform.PaddingTransform"
+    params: 
+      objective: "patching"
+      patch_len: 16
+      type_: "nan_padding"
+  imputation:
+    class_path: "src.objects.ImputationTransform.ImputationTransform"
+    params:
+      type_: "constant"
+      value: 0.0
   # time_standardization: # TODO: implement
 
 data:
