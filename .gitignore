@@ -75,3 +75,4 @@ config
 *.out
 slurm_logs/
 slurm_scripts/
+design/

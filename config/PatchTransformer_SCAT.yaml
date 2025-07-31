@@ -21,6 +21,12 @@ transformations:
       type_: "global_standard"  # to not overide type keyword
       mean: [58.0, 15.0, 350.0, 100.0, 100.0]  # Mean for each channel
       std: [1.0, 1.0, 100.0, 50.0, 50.0]   # Std for each channel
+  regularization:
+    class_path: "src.objects.RegularizationTransform.RegularizationTransform"
+    params:
+      type_: "linear_interpolation"
+      time_interval: 5  # seconds
+      error_tolerance: 1  # seconds 
   padding:
     class_path: "src.objects.PaddingTransform.PaddingTransform"
     params: 
@@ -32,12 +38,11 @@ transformations:
     params:
       type_: "constant"
       value: 0.0
-  # time_standardization: # TODO: implement
 
 data:
   class_path: "src.data.SCATDataset.SCATDataset"
   # Feature configuration
-  input_features: ['lat', 'lon', 'alt', 'vx', 'vy']
+  input_features: ['timestamp', 'lat', 'lon', 'alt', 'vx', 'vy']
   output_features: ['lat', 'lon', 'alt']
   train_ratio: 0.7
   val_ratio: 0.15

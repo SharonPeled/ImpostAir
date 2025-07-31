@@ -4,6 +4,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 import torch
 from abc import abstractmethod
+import numpy as np
 
 
 class AbstractDataset(Dataset):
@@ -25,12 +26,14 @@ class AbstractDataset(Dataset):
         file_path = self.df.iloc[idx]['path']
 
         df_trajectory = self.load_trajectory(file_path)
+        # timestamps are in milliseconds
+        timestamps = torch.tensor(pd.to_datetime(df_trajectory['timestamp']).astype(np.int64).values // 10**6)
         df_trajectory.drop(['timestamp', 'file_id'], axis=1, errors='ignore', inplace=True)
         
         ts = torch.tensor(df_trajectory.values).float()
         nan_mask = torch.isnan(ts).any(-1)  # Create a mask where values are NaN
 
-        sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path, 'columns': list(df_trajectory.columns)}
+        sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path, 'columns': list(df_trajectory.columns), 'timestamps': timestamps}
         if self.transform:
             sample = self.transform(sample)
         return sample
