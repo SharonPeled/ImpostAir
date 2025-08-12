@@ -31,9 +31,9 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         self.activation = config['model']['patch_transformer_params']['activation']
         self.n_input_features = config['model']['patch_transformer_params']['n_input_features']
         self.n_output_features = config['model']['patch_transformer_params']['n_output_features']
-        self.max_num_patches = config['model']['patch_transformer_params']['max_n_patches']
+        self.max_num_patches = config['model']['patch_transformer_params'].get('max_n_patches')
         self.context_length = config['model']['patch_transformer_params']['context_length']
-        self.pos_encoding_type = config['model']['patch_transformer_params']['pos_encoding_type']
+        self.pos_encoding_type = config['model']['patch_transformer_params'].get('pos_encoding_type')
         self.patch_nan_tolerance_percentage = config['model']['patch_transformer_params']['patch_nan_tolerance_percentage']
         
         # Build model

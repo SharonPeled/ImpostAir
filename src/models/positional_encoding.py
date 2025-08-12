@@ -11,8 +11,10 @@ class PositionalEncoding(nn.Module):
         self.d_model = d_model
         self.max_num_patches = max_num_patches
         self.encoding_type = encoding_type
-        
-        if encoding_type == "learnable":
+
+        if encoding_type is None:
+            return
+        elif encoding_type == "learnable":
             self.pos_embedding = nn.Parameter(torch.randn(1, max_num_patches, d_model))
         elif encoding_type == "sinusoidal":
             # Create sinusoidal positional encoding
@@ -37,6 +39,9 @@ class PositionalEncoding(nn.Module):
         Returns:
             Tensor of shape [batch_size, num_patches, d_model] with positional encoding added
         """
+        if self.encoding_type is None:
+            return x
+            
         batch_size, num_patches, d_model = x.shape
         
         if num_patches > self.max_num_patches:
