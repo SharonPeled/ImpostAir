@@ -76,3 +76,4 @@ config
 slurm_logs/
 slurm_scripts/
 design/
+*profiler*.txt

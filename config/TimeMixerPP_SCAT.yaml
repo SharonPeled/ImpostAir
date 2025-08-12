@@ -21,6 +21,12 @@ transformations:
       type_: "global_standard"  # to not overide type keyword
       mean: [58.0, 15.0, 350.0, 100.0, 100.0]  # Mean for each channel
       std: [1.0, 1.0, 100.0, 50.0, 50.0]   # Std for each channel
+  regularization:
+    class_path: "src.objects.RegularizationTransform.RegularizationTransform"
+    params:
+      type_: "linear_interpolation"
+      time_interval: 5  # seconds
+      error_tolerance: 1  # seconds 
   padding:
     class_path: "src.objects.PaddingTransform.PaddingTransform"
     params: 
@@ -32,13 +38,11 @@ transformations:
     params:
       type_: "constant"
       value: 0.0
-  # time_standardization: # TODO: implement
-
 
 data:
   class_path: "src.data.SCATDataset.SCATDataset"
   # Feature configuration
-  input_features: ['lat', 'lon', 'alt', 'vx', 'vy']
+  input_features: ['timestamp', 'lat', 'lon', 'alt', 'vx', 'vy']
   output_features: ['lat', 'lon', 'alt']
   train_ratio: 0.7
   val_ratio: 0.15
@@ -52,12 +56,12 @@ model:
     d_ffn: 16
     n_heads: 2
     dropout: 0.1
-    top_k: 3
+    top_k: 2
     n_kernels: 3
     channel_mixing: true
     channel_independence: false
-    downsampling_layers: 2
-    downsampling_window: 2
+    downsampling_layers: 1
+    downsampling_window: 1
     downsampling_method: "conv"
     use_future_temporal_feature: false
     use_norm: false
@@ -81,10 +85,10 @@ model:
 
 training:
   batch_size: 1
-  accumulate_grad_batches: 10  # number of batches to accumulate before updating the model
+  accumulate_grad_batches: 1  # number of batches to accumulate before updating the model
   
   # Training parameters
-  max_epochs: 15
+  max_epochs: 1
   learning_rate: 0.0001     # PatchTST uses 1e-4
   weight_decay: 0.01        # L2 regularization as in PatchTST
   gradient_clip_val: 1.0
@@ -99,4 +103,4 @@ training:
 
 debug:
   activate: true
-  sample_size: 30
+  sample_size: 10
