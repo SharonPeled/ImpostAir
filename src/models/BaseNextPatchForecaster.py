@@ -45,10 +45,6 @@ class BaseNextPatchForecaster(pl.LightningModule):
                 "frequency": 1,
             },
         }
-    
-    # def _process_batch(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
-    #     raise NotImplementedError("general_step is not implemented")
-    
 
     def _process_batch(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
         """ """
@@ -66,16 +62,15 @@ class BaseNextPatchForecaster(pl.LightningModule):
         loss = self.loss(y_true, y_next_token_pred, y_true_mask)        
         
         # Compute metrics
-        # metrics = compute_patch_metrics(y_true, y_next_token_pred, mask_pred)
+        metrics = compute_patch_metrics(y_true, y_next_token_pred, y_true_mask)
         
-        # # Log metrics
-        # self.log_metric(f'{mode}_loss', loss)
-        # self.log_metric(f'{mode}_mse', metrics['mse'])
-        # self.log_metric(f'{mode}_mae', metrics['mae'])
-        # self.log_metric(f'{mode}_rmse', metrics['rmse'])
+        # Log metrics
+        self.log_metric(f'{mode}_loss', loss)
+        self.log_metric(f'{mode}_mse', metrics['mse'])
+        self.log_metric(f'{mode}_mae', metrics['mae'])
+        self.log_metric(f'{mode}_rmse', metrics['rmse'])
 
         return loss
-
     
     def general_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
         loss = self._process_batch(batch, batch_idx, mode)
