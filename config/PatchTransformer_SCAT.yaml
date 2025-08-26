@@ -29,15 +29,10 @@ transformations:
       error_tolerance: 1  # seconds 
   padding:
     class_path: "src.objects.PaddingTransform.PaddingTransform"
-    params: 
-      objective: "patching"
-      patch_len: 16
-      type_: "nan_padding"
-  imputation:
-    class_path: "src.objects.ImputationTransform.ImputationTransform"
     params:
-      type_: "constant"
-      value: 0.0
+      max_len: 3200
+      pad_value: 0.0
+      pad_nans: True
   patching:
     class_path: "src.objects.PatchTransform.PatchTransform"
     params:
@@ -71,8 +66,7 @@ model:
     patch_nan_tolerance_percentage: 0.5  # Tolerance for nan values in patches
 
 training:
-  batch_size: 1
-  accumulate_grad_batches: 1  # number of batches to accumulate before updating the model
+  batch_size: 4
   
   # Training parameters
   max_epochs: 1
