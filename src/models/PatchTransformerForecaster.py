@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from src.models.BaseNextPatchForecaster import BaseNextPatchForecaster
 from src.models.positional_encoding import PositionalEncoding
 from src.models.patch_embedding import PatchEmbedding
-from src.models.utils import divide_ts_into_patches
 
 
 class PatchTransformerForecaster(BaseNextPatchForecaster):
@@ -116,24 +115,6 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
 
         return y_pred_all
     
-    def _get_key_padding_mask(self, context_patches: torch.Tensor, context_mask: torch.Tensor) -> torch.Tensor:
-        """
-        Get key padding mask for the transformer decoder.
-        context_mask: [batch_size, context_steps] boolean mask (True where value is NaN/imputed/pad)
-        If context_mask is None, return mask with all False (no padding).
-        """
-        if context_mask is None:
-            # No mask provided: return all False
-            batch_size, num_patches, _ = context_patches.shape
-            key_padding_mask = torch.zeros((batch_size, num_patches), dtype=torch.bool, device=context_patches.device)
-        else:
-            # context_mask: [batch_size, context_steps]
-            mask_patches = divide_ts_into_patches(context_mask.unsqueeze(-1), self.patch_len)  # [batch, num_patches, patch_len]
-            nan_counts = mask_patches.sum(dim=-1).float()  # [batch_size, num_patches]
-            patch_nan_percentage = nan_counts / self.patch_len  # [batch_size, num_patches]
-            key_padding_mask = patch_nan_percentage > self.patch_nan_tolerance_percentage  # [batch_size, num_patches], True = ignore
-        
-        return key_padding_mask
 
 
     

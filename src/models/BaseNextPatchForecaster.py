@@ -4,7 +4,6 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-from src.models.utils import divide_ts_into_patches, teacher_forcing_pairs_generator
 from src.utils import compute_patch_metrics
 
 
