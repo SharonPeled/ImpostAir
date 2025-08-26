@@ -16,8 +16,6 @@ def run_training(config):
     pl.seed_everything(config['project']['seed'])
     timestamp = datetime.datetime.now().strftime('%Y_%m_%d_%H%M%S')
 
-    torch.autograd.set_detect_anomaly(True)
-
     # initialize transforms
     print("Initializing transforms...")
     transform = compose_transforms(config)

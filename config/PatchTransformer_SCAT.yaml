@@ -38,6 +38,12 @@ transformations:
     params:
       type_: "constant"
       value: 0.0
+  patching:
+    class_path: "src.objects.PatchTransform.PatchTransform"
+    params:
+      patch_len: 16
+      patch_nan_tolerance_percentage: 0.5
+
 
 data:
   class_path: "src.data.SCATDataset.SCATDataset"

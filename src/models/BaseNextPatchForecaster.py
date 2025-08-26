@@ -14,23 +14,10 @@ class BaseNextPatchForecaster(pl.LightningModule):
     def __init__(self, config: Dict[str, Any], patch_len: int):
         super().__init__()
         self.config = config
-
         self.learning_rate = config['training']['learning_rate']
         self.weight_decay = config['training']['weight_decay']
         self.patch_len = patch_len
         self.save_hyperparameters(config)
-    
-    def _init_weights(self):
-        """Initialize model weights following best practices."""
-        for module in self.modules():
-            if isinstance(module, nn.Linear):
-                # Xavier/Glorot initialization for linear layers
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.LayerNorm):
-                nn.init.constant_(module.weight, 1.0)
-                nn.init.constant_(module.bias, 0)
     
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
@@ -59,73 +46,57 @@ class BaseNextPatchForecaster(pl.LightningModule):
             },
         }
     
-    def general_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
-        loss_list = []
-        predicted_patch_list = []
-        target_patch_list = []
-        target_patch_mask_list = []
+    # def _process_batch(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
+    #     raise NotImplementedError("general_step is not implemented")
+    
+
+    def _process_batch(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
+        """ """
+
         ts = batch['ts']
-        ts_mask = batch['nan_mask'] if 'nan_mask' in batch else None
+        ts_mask = batch['nan_mask']
+
         columns = [col[0] for col in batch['columns']]
         columns_indexes = [columns.index(col) for col in self.config['data']['output_features']]
-        for context, target_patch, context_mask, target_patch_mask in teacher_forcing_pairs_generator(ts, self.patch_len, ts_mask):
-            predicted_patch = self.forward(context, context_mask)  
-            target_patch = target_patch[:, :, columns_indexes]
 
-            if predicted_patch is None:
-                # model failed to generate predictions due to invalid context
-                continue
+        y_next_token_pred = self.forward(ts, ts_mask)  #  [B, ]
+        y_true = ts[:, :-1, :, columns_indexes]  # shifting and taking only target variables
+        y_true_mask = ts_mask[:, :-1]
 
-            loss = self.loss(predicted_patch, target_patch)        
-            loss_list.append(loss)
-
-            predicted_patch_list.append(predicted_patch.squeeze(0).detach().cpu())
-            target_patch_list.append(target_patch.squeeze(0).cpu())
-            target_patch_mask_list.append(target_patch_mask.squeeze(0).cpu())
-
-        if len(loss_list) == 0:
-            print(f"Failed to generate any patches, skipping batch {batch_idx}.")
-            return None
+        loss = self.loss(y_true, y_next_token_pred, y_true_mask)        
         
-        loss = sum(loss_list) / len(loss_list)
-
         # Compute metrics
-        metrics = compute_patch_metrics(
-            torch.stack(predicted_patch_list, dim=0), 
-            torch.stack(target_patch_list, dim=0),
-            torch.stack(target_patch_mask_list, dim=0)
-        )
+        # metrics = compute_patch_metrics(y_true, y_next_token_pred, mask_pred)
         
-        # Log metrics
-        self.log_metric(f'{mode}_loss', loss)
-        self.log_metric(f'{mode}_mse', metrics['mse'])
-        self.log_metric(f'{mode}_mae', metrics['mae'])
-        self.log_metric(f'{mode}_rmse', metrics['rmse'])
+        # # Log metrics
+        # self.log_metric(f'{mode}_loss', loss)
+        # self.log_metric(f'{mode}_mse', metrics['mse'])
+        # self.log_metric(f'{mode}_mae', metrics['mae'])
+        # self.log_metric(f'{mode}_rmse', metrics['rmse'])
 
-        return loss    
+        return loss
+
+    
+    def general_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, mode: str):
+        loss = self._process_batch(batch, batch_idx, mode)
+        if loss is None:
+            return None
+        return {'loss': loss}  
 
     def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
-        loss = self.general_step(batch, batch_idx, 'train')
-        if loss is None:
-            return None
-        return {'loss': loss}
+        return self.general_step(batch, batch_idx, 'train')
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
-        loss = self.general_step(batch, batch_idx, 'val')
-        if loss is None:
-            return None
-        return {'val_loss': loss}
+        return self.general_step(batch, batch_idx, 'val')
 
     def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int) -> Dict[str, Any]:
-        loss = self.general_step(batch, batch_idx, 'test')
-        if loss is None:
-            return None
-        return {'test_loss': loss}
+        return self.general_step(batch, batch_idx, 'test')
     
-    def loss(self, predicted_patch, target_patch):
-        return F.mse_loss(predicted_patch, target_patch)
+    def loss(self, y_true, y_next_token_pred, mask_pred):
+        se = (y_true - y_next_token_pred).pow(2).sum(dim=(2,3))   # [B, N-1]
+        return se[mask_pred].mean()
     
     def log_metric(self, metric_name: str, value: float):
         self.logger.experiment.log_metric(self.logger.run_id, metric_name, value)
         self.log(metric_name, value, prog_bar=True)
-
+  

@@ -71,7 +71,7 @@ class RegularizationTransform:
 
         # Update nan_mask: mark as True where the distance to the nearest observed timestamp exceeds error_tolerance
         dist_to_nearest = torch.min(torch.abs(valid_times[:, None] - regular_relative[None, :]), dim=0).values
-        sample['nan_mask'] = dist_to_nearest > self.error_tolerance 
+        sample['nan_mask'] = dist_to_nearest > self.error_tolerance * 1000
         
         return sample
 
