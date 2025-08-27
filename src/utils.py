@@ -20,39 +20,45 @@ def get_class_from_path(class_path):
     return Class
 
 
-def compute_patch_metrics(predicted_ts: torch.Tensor, 
-                         target_ts: torch.Tensor, mask_ts: torch.Tensor = None) -> dict:
+def compute_metrics(
+    y_true: torch.Tensor,
+    y_pred: torch.Tensor,
+    stage: str,
+    mask: torch.Tensor = None,
+    metric_list=None
+) -> dict:
     """
-    Compute comprehensive metrics for patch prediction.
+    Compute selected metrics for patch prediction.
 
     Args:
-        predicted_ts: [num_steps, num_features]
-        target_ts: [num_steps, num_features]
-        mask_ts: [num_steps, ] boolean mask (True where value is NaN/imputed/pad)
+        y_true (torch.Tensor): Ground truth tensor of shape [batch_size, num_steps, num_features].
+        y_pred (torch.Tensor): Predicted tensor of shape [batch_size, num_steps, num_features].
+        mask (torch.Tensor, optional): Boolean mask of shape [batch_size, num_steps] (True where value is NaN/imputed/pad).
+        stage: train/test/val
+        metric_list (list): List of metric names to compute. Supported: 'mse', 'mae', 'rmse'.
+
     Returns:
-        Dictionary containing:
-            mse (float): Mean squared error across all patches
-            mae (float): Mean absolute error across all patches 
-            rmse (float): Root mean squared error across all patches
-            per_feature_mse (list): MSE per feature, averaged over patches and timesteps
+        dict: Dictionary containing the computed metrics.
     """
-    if mask_ts is not None:
-        valid_mask = ~mask_ts
-        predicted_ts = predicted_ts[valid_mask]
-        target_ts = target_ts[valid_mask]
-    
-    # Overall metrics
-    mse = F.mse_loss(predicted_ts.view(-1), target_ts.view(-1))  
-    mae = F.l1_loss(predicted_ts.view(-1), target_ts.view(-1)) 
-    rmse = torch.sqrt(mse)
 
-    # Per-feature MSE: Compute MSE for each feature, averaged over all timesteps
-    per_feature_mse = F.mse_loss(predicted_ts, target_ts, reduction='none')  # [num_steps, num_features]
-    per_feature_mse = per_feature_mse.mean(dim=0)  # Average over timesteps for each feature
+    if mask is not None:
+        valid_mask = ~mask
+        y_true = y_true[valid_mask]
+        y_pred = y_pred[valid_mask]
 
-    return {
-        'mse': mse.item(),
-        'mae': mae.item(),
-        'rmse': rmse.item(),
-        'per_feature_mse': per_feature_mse.tolist(),
-    }
+    results = {}
+    for metric in metric_list:
+        if metric == 'mse':
+            mse = F.mse_loss(y_pred.view(-1), y_true.view(-1))
+            results[f'{stage}_mse'] = mse.item()
+        elif metric == 'mae':
+            mae = F.l1_loss(y_pred.view(-1), y_true.view(-1))
+            results[f'{stage}_mae'] = mae.item()
+        elif metric == 'rmse':
+            mse = F.mse_loss(y_pred.view(-1), y_true.view(-1))
+            rmse = torch.sqrt(mse)
+            results[f'{stage}_rmse'] = rmse.item()
+        else:
+            results[f'{stage}_metric'] = float('nan')
+
+    return results

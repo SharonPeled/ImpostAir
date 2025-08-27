@@ -39,7 +39,6 @@ transformations:
       patch_len: 16
       patch_nan_tolerance_percentage: 0.5
 
-
 data:
   class_path: "src.data.SCATDataset.SCATDataset"
   # Feature configuration
@@ -67,7 +66,7 @@ training:
   batch_size: 4
   
   # Training parameters
-  max_epochs: 1
+  max_epochs: 2
   learning_rate: 0.0001     # PatchTST uses 1e-4
   weight_decay: 0.01        # L2 regularization as in PatchTST
   gradient_clip_val: 1.0
@@ -80,6 +79,11 @@ training:
   teacher_forcing_ratio: 1.0    # Always use ground truth during training
   autoregressive_inference: true  # Pure autoregressive during inference
 
+logging:  # Logs both batch and epoch levels, loss is alwayes logged
+  train: ['mse', 'rmse', 'mae']
+  val: ['mse', 'rmse', 'mae']
+  test: ['mse', 'rmse', 'mae']
+
 debug:
   activate: true
-  sample_size: 10
+  sample_size: 30
