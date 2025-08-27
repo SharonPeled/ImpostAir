@@ -6,16 +6,18 @@ from src.infer import run_inference
 import os 
 from pathlib import Path
 from typing import Dict, Any
+from omegaconf import OmegaConf
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
-    """Load and validate configuration from YAML file."""
+    """Load and validate configuration from YAML file using OmegaConf."""
     config_file = Path(config_path)
     if not config_file.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
     
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
+    OmegaConf.register_new_resolver("eval", eval)
+
+    config = OmegaConf.load(config_file)
     
     return config
 
