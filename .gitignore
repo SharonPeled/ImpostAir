@@ -59,9 +59,9 @@ logs/
 # *.json
 
 # Models and predictions
-models/
-predictions/
-validations/
+./models/
+./predictions/
+./validations/
 
 # Temporary files
 tmp/
@@ -72,4 +72,8 @@ sandbox/
 notebooks/*.csv
 config
 !config/example_config.yaml
-nohup.out
+*.out
+slurm_logs/
+slurm_scripts/
+design/
+*profiler*.txt

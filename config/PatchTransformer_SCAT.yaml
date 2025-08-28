@@ -1,0 +1,89 @@
+project:
+  experiment_name: "SCAT_patch_transformer_debug"
+  run_name: "run1"
+  seed: 123
+
+paths:  # main relative paths
+  data_dir: "./sandbox/SCAT_unzipped"
+  mlflow_uri: "./mlruns"
+  checkpoint_dir: "./models"
+  predictions_dir: "./predictions"
+
+compute:
+  accelerator: "gpu"
+  devices: 1
+  num_workers: 4
+
+transformations:
+  normalization: 
+    class_path: "src.objects.NormalizerTransform.NormalizerTransform"  
+    params:
+      type_: "global_standard"  # to not overide type keyword
+      mean: [58.0, 15.0, 350.0, 100.0, 100.0]  # Mean for each channel
+      std: [1.0, 1.0, 100.0, 50.0, 50.0]   # Std for each channel
+  regularization:
+    class_path: "src.objects.RegularizationTransform.RegularizationTransform"
+    params:
+      type_: "linear_interpolation"
+      time_interval: 5  # seconds
+      error_tolerance: 1  # seconds 
+  padding:
+    class_path: "src.objects.PaddingTransform.PaddingTransform"
+    params:
+      max_len: 3200
+      pad_value: 0.0
+      pad_nans: True
+  patching:
+    class_path: "src.objects.PatchTransform.PatchTransform"
+    params:
+      patch_len: 16
+      patch_nan_tolerance_percentage: 0.5
+
+data:
+  class_path: "src.data.SCATDataset.SCATDataset"
+  # Feature configuration
+  input_features: ['timestamp', 'lat', 'lon', 'alt', 'vx', 'vy']
+  output_features: ['lat', 'lon', 'alt']
+  train_ratio: 0.7
+  val_ratio: 0.15
+
+model:
+  class_path: "src.models.PatchTransformerForecaster.PatchTransformerForecaster"
+  patch_transformer_params:
+    patch_len: ${transformations.patching.params.patch_len} # Length of each patch (subseries length)
+    d_model: 128           # Model dimension (smaller due to patch efficiency)
+    n_heads: 16            # Number of attention heads (PatchTST uses 16)
+    n_layers: 3            # Number of transformer layers (fewer needed with patches)
+    d_ff: 256              # Feed-forward dimension (2x d_model typical)
+    dropout: 0.2           # Dropout rate
+    activation: "gelu"     # Activation function (GELU as in PatchTST)
+    n_input_features: ${eval:'len(${data.input_features}) - 1'}    # Number of input features (lat, lon, alt, vx, vy) - not including timestamp
+    n_output_features: ${eval:'len(${data.output_features})'}   # Number of output features (lat, lon, alt)
+    max_n_patches: ${eval:'${transformations.padding.params.max_len} // ${transformations.patching.params.patch_len} + 1'}     # Maximum number of patches for positional encoding
+    pos_encoding_type: "learnable"  # "learnable" or "sinusoidal"
+
+training:
+  batch_size: 4
+  
+  # Training parameters
+  max_epochs: 2
+  learning_rate: 0.0001     # PatchTST uses 1e-4
+  weight_decay: 0.01        # L2 regularization as in PatchTST
+  gradient_clip_val: 1.0
+  
+  # Early stopping
+  early_stopping_patience: 20   # Longer patience for patch-based training
+  early_stopping_monitor: "val_loss"
+  
+  # Progressive training parameters
+  teacher_forcing_ratio: 1.0    # Always use ground truth during training
+  autoregressive_inference: true  # Pure autoregressive during inference
+
+logging:  # Logs both batch and epoch levels, loss is alwayes logged
+  train: ['mse', 'rmse', 'mae']
+  val: ['mse', 'rmse', 'mae']
+  test: ['mse', 'rmse', 'mae']
+
+debug:
+  activate: true
+  sample_size: 30
