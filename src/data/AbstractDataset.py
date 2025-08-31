@@ -27,7 +27,7 @@ class AbstractDataset(Dataset):
 
         df_trajectory = self.load_trajectory(file_path)
         # timestamps are in milliseconds
-        timestamps = torch.tensor(pd.to_datetime(df_trajectory['timestamp']).astype(np.int64).values // 10**6)
+        timestamps = torch.tensor(pd.to_datetime(df_trajectory['timestamp'], format='mixed').astype(np.int64).values // 10**6)  # TODO: mixed here might not needed in runai
         df_trajectory.drop(['timestamp', 'file_id'], axis=1, errors='ignore', inplace=True)
         
         ts = torch.tensor(df_trajectory.values).float()
