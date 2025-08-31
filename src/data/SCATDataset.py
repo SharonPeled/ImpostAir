@@ -51,6 +51,10 @@ class SCATDataset(AbstractDataset):
                         point['vx'] = plot['I062/185'].get('vx')
                     if 'vy' in input_features:
                         point['vy'] = plot['I062/185'].get('vy')
+
+                # Extract y_detected if available
+                if 'y_detected' in input_features:
+                    point['y_detected'] = plot.get('y_detected')
                 
                 plots.append(point)
         

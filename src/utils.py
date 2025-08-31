@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 import importlib
 from torchvision import transforms
-
+import numpy as np
 
 def compose_transforms(config):
     transforms_list = []
@@ -24,6 +24,9 @@ def compute_metrics(
     y_true: torch.Tensor,
     y_pred: torch.Tensor,
     stage: str,
+    y_detected: torch.Tensor = None,
+    y_detected_pred: torch.Tensor = None,
+    threshold: float = 0.5,
     mask: torch.Tensor = None,
     metric_list=None
 ) -> dict:
@@ -45,6 +48,7 @@ def compute_metrics(
         valid_mask = ~mask
         y_true = y_true[valid_mask]
         y_pred = y_pred[valid_mask]
+        y_detected_true = y_detected[valid_mask]
 
     results = {}
     for metric in metric_list:
@@ -58,6 +62,13 @@ def compute_metrics(
             mse = F.mse_loss(y_pred.view(-1), y_true.view(-1))
             rmse = torch.sqrt(mse)
             results[f'{stage}_rmse'] = rmse.item()
+        elif metric == 'detection_accuracy':
+            y_detected_pred = np.where(mse > threshold, 1, 0)
+            detection_accuracy = (y_detected_pred.view(-1) == y_detected_true.view(-1)).float().mean()
+            results[f'{stage}_detection_accuracy'] = detection_accuracy.item()
+        elif metric == 'detection_accuracy_pred':
+            detection_accuracy = (y_detected_pred.view(-1) == y_detected_true.view(-1)).float().mean()
+            results[f'{stage}_detection_accuracy'] = detection_accuracy.item()
         else:
             results[f'{stage}_metric'] = float('nan')
 

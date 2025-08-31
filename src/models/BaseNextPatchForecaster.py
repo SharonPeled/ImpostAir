@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from typing import Dict, Any
 from src.utils import compute_metrics
+import numpy as np
 
 
 class BaseNextPatchForecaster(pl.LightningModule):
@@ -47,6 +48,7 @@ class BaseNextPatchForecaster(pl.LightningModule):
     def _process_batch(self, batch: Dict[str, torch.Tensor], stage: str):
         ts = batch["ts"]
         ts_mask = batch["nan_mask"]
+        y_detected = batch["y_detected"]
         columns = [col[0] for col in batch["columns"]]
         target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
 
@@ -56,16 +58,21 @@ class BaseNextPatchForecaster(pl.LightningModule):
 
         loss = self.loss(y_true, y_pred, y_mask)
         metrics = compute_metrics(
-            y_true, y_pred, stage, y_mask, self.config["logging"][stage]
+            y_true, y_pred, stage, y_mask, y_detected, self.anomaly_threshold_train, self.config["logging"][stage]
         )
         metrics[f"{stage}_loss"] = loss
         return loss, metrics
 
-    def training_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
+    def training_step(self, batch, batch_idx):
         loss, metrics = self._process_batch(batch, stage="train")
-        for name, val in metrics.items():
-            self.log(name, val, on_step=True, on_epoch=True, prog_bar=name.endswith("loss"), sync_dist=True)
-        return loss
+        self.log_dict(metrics, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
+        return {"loss": loss, "per_step_loss": loss.detach()}
+
+    def training_epoch_end(self, outputs):
+        per_step = torch.stack([o["per_step_loss"] for o in outputs])
+        all_losses = self.all_gather(per_step).reshape(-1).float().cpu().numpy()
+        self.anomaly_threshold_train = float(np.percentile(all_losses, 99))
+        self.log("anomaly_threshold", self.anomaly_threshold_train, prog_bar=True, sync_dist=True)
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
         loss, metrics = self._process_batch(batch, stage="val")
@@ -82,3 +89,52 @@ class BaseNextPatchForecaster(pl.LightningModule):
     def loss(self, y_true, y_pred, mask):
         se = (y_true - y_pred).pow(2).sum(dim=(2, 3))
         return se[mask].mean()
+
+    def process_batch_pred(self, batch: Dict[str, torch.Tensor]):
+        ts = batch["ts"]                # [B, T, F]
+        ts_mask = batch["nan_mask"]     # [B, T]
+        y_detected = batch.get("y_detected", None)
+        columns = [col[0] for col in batch["columns"]]
+        target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
+
+        # forward
+        y_pred = self.forward(ts, ts_mask)
+        y_true = ts[:, :-1, :, target_idx]      # align with pred
+        y_mask = ts_mask[:, :-1]
+
+        # compute loss
+        loss = self.loss(y_true, y_pred, y_mask)
+
+        # metrics (including detection_accuracy via compute_metrics)
+        metrics = compute_metrics(
+            y_true, 
+            y_pred, 
+            stage="predict",
+            y_detected=y_detected[:, :-1] if y_detected is not None else None,
+            threshold=getattr(self, "anomaly_threshold", 0.5),
+            y_detected_pred=flags.detach().cpu().tolist() if y_detected is not None else None,
+            mask=y_mask,
+            metric_list=["mse", "mae", "rmse", "detection_accuracy_pred"]
+        )
+
+        paths = batch.get("path", [None] * ts.shape[0])
+        if isinstance(paths, str):
+            paths = [paths]
+
+        # squared error for exporting
+        se = (y_true - y_pred).pow(2).sum(dim=(2, 3))  # [B, T]
+        flags = (se > getattr(self, "anomaly_threshold", 0.5)).int()
+
+        out = {
+            "path": list(paths),
+            "patch_scores": se.detach().cpu().tolist(),
+            "is_anomaly": flags.detach().cpu().tolist(),
+        }
+
+        return loss, metrics, out
+
+    def predict_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0):
+        """Predict API for Lightning: delegates to process_batch_pred and logs."""
+        loss, metrics, out = self.process_batch_pred(batch)
+        self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        return out

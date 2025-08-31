@@ -4,7 +4,7 @@ project:
   seed: 123
 
 paths:  # main relative paths
-  data_dir: "./sandbox/SCAT_unzipped"
+  data_dir: "./datasets/SCAT_unzipped"
   mlflow_uri: "./mlruns"
   checkpoint_dir: "./models"
   predictions_dir: "./predictions"
@@ -80,9 +80,9 @@ training:
   autoregressive_inference: true  # Pure autoregressive during inference
 
 logging:  # Logs both batch and epoch levels, loss is alwayes logged
-  train: ['mse', 'rmse', 'mae']
-  val: ['mse', 'rmse', 'mae']
-  test: ['mse', 'rmse', 'mae']
+  train: ['mse', 'rmse', 'mae', 'detection_accuracy']
+  val: ['mse', 'rmse', 'mae', 'detection_accuracy']
+  test: ['mse', 'rmse', 'mae', 'detection_accuracy_pred']
 
 debug:
   activate: true

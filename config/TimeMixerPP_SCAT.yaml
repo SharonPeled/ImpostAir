@@ -42,7 +42,7 @@ transformations:
 data:
   class_path: "src.data.SCATDataset.SCATDataset"
   # Feature configuration
-  input_features: ['timestamp', 'lat', 'lon', 'alt', 'vx', 'vy']
+  input_features: ['timestamp', 'lat', 'lon', 'alt', 'vx', 'vy', 'y_detected']
   output_features: ['lat', 'lon', 'alt']
   train_ratio: 0.7
   val_ratio: 0.15

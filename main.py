@@ -2,7 +2,7 @@ import argparse
 import yaml
 import sys
 from src.train import run_training
-from src.infer import run_inference
+from src.infer import run_inference, run_detection
 import os 
 from pathlib import Path
 from typing import Dict, Any
@@ -36,6 +36,12 @@ def main():
     infer_parser.add_argument("--config", required=True, help="Path to YAML config file")
     infer_parser.add_argument("--checkpoint", required=True, help="Path to model checkpoint")
 
+    # Detection command
+    detect_parser = subparsers.add_parser("detect", help="Run anomaly detection on test data")
+    detect_parser.add_argument("--config", required=True, help="Path to YAML config file")
+    detect_parser.add_argument("--checkpoint", required=True, help="Path to model checkpoint")
+    detect_parser.add_argument("--threshold", required=False, type=float, help="Anomaly threshold (overrides learned)")
+
     args = parser.parse_args()
     config = load_config(args.config)
 
@@ -43,6 +49,9 @@ def main():
         run_training(config)
     elif args.command == "infer":
         run_inference(config, args.checkpoint)
+    elif args.command == "detect":
+        df = run_detection(config, args.checkpoint, threshold=args.threshold)
+        print(df.head())
     else:
         print("Unknown command", file=sys.stderr)
         sys.exit(1)

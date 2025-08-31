@@ -54,7 +54,7 @@ Thumbs.db
 logs/
 
 # Data (uncomment if you don't want to track data)
-# data/
+datasets/
 # *.csv
 # *.json
 
