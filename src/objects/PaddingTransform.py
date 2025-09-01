@@ -29,16 +29,26 @@ class PaddingTransform:
         """
         ts = sample['ts']
         nan_mask = sample['nan_mask']
+        y_detected = sample['y_detected']
         T, _ = ts.shape
+
+        # Ensure y_detected length matches current ts length before any padding/truncation
+        y_len = y_detected.shape[0]
+        if y_len < T:
+            y_detected = F.pad(y_detected, (0, T - y_len), mode='constant', value=0)
+        elif y_len > T:
+            y_detected = y_detected[-T:]
 
         if T < self.max_len:
             pad_size = self.max_len - T
             # Pad rows at the end (second-to-last dim right)
-            ts = F.pad(ts, (0, 0, 0, pad_size), mode='constant', value=float(self.pad_value))
+            ts = F.pad(ts, (0, 0, 0, pad_size), mode='constant', value=float(self.pad_value))   
+            y_detected = F.pad(y_detected, (0, pad_size), mode='constant', value=0)
             # Mark padded positions as True in the mask (indicating padded/missing)
             nan_mask = F.pad(nan_mask, (0, pad_size), mode='constant', value=True)
 
         # truncate ts if longer than max_len
         sample['ts'] = ts[-self.max_len:]
         sample['nan_mask'] = nan_mask[-self.max_len:]
+        sample['y_detected'] = y_detected[-self.max_len:]
         return sample

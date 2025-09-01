@@ -30,16 +30,17 @@ class PatchTransform:
         """
         ts = sample['ts']
         nan_mask = sample['nan_mask']
+        y_detected = sample['y_detected']
         
         T, C = ts.shape
         
         assert T % self.patch_len == 0, "Time series is not divisible by patch_len"
-        
         # Calculate number of patches
         N = T // self.patch_len
         
         # Create patches for time series
         ts_patches = ts.reshape(N, self.patch_len, C)
+        y_detected_patches = y_detected.reshape(N, self.patch_len)
         
         # Create patches for nan mask
         nan_mask_patches = nan_mask.reshape(N, self.patch_len)
@@ -57,5 +58,6 @@ class PatchTransform:
         # Update sample
         sample['ts'] = ts_patches
         sample['nan_mask'] = nan_mask_patches_binary
+        sample['y_detected'] = y_detected_patches
         
         return sample

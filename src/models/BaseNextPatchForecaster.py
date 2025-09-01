@@ -17,6 +17,8 @@ class BaseNextPatchForecaster(pl.LightningModule):
         self.weight_decay = config["training"]["weight_decay"]
         self.patch_len = patch_len
         self.save_hyperparameters(config)
+        self.anomaly_threshold_train = 0.5
+        self._epoch_train_losses = []
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
@@ -54,11 +56,13 @@ class BaseNextPatchForecaster(pl.LightningModule):
 
         y_pred = self.forward(ts, ts_mask)
         y_true = ts[:, :-1, :, target_idx]
+        y_detected = y_detected[:, :-1]
         y_mask = ts_mask[:, :-1]
 
         loss = self.loss(y_true, y_pred, y_mask)
+
         metrics = compute_metrics(
-            y_true, y_pred, stage, y_mask, y_detected, self.anomaly_threshold_train, self.config["logging"][stage]
+            y_true=y_true, y_pred=y_pred, stage=stage, mask=y_mask, y_detected=y_detected, threshold=self.anomaly_threshold_train, metric_list=self.config["logging"][stage]
         )
         metrics[f"{stage}_loss"] = loss
         return loss, metrics
@@ -66,13 +70,19 @@ class BaseNextPatchForecaster(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         loss, metrics = self._process_batch(batch, stage="train")
         self.log_dict(metrics, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
-        return {"loss": loss, "per_step_loss": loss.detach()}
+        self._epoch_train_losses.append(loss.detach())
+        return {"loss": loss}
+        
+    def on_train_epoch_start(self):
+        self._epoch_train_losses = []
 
-    def training_epoch_end(self, outputs):
-        per_step = torch.stack([o["per_step_loss"] for o in outputs])
+    def on_train_epoch_end(self):
+        if len(self._epoch_train_losses) == 0:
+            return
+        per_step = torch.stack(self._epoch_train_losses)
         all_losses = self.all_gather(per_step).reshape(-1).float().cpu().numpy()
         self.anomaly_threshold_train = float(np.percentile(all_losses, 99))
-        self.log("anomaly_threshold", self.anomaly_threshold_train, prog_bar=True, sync_dist=True)
+        self.log("anomaly_threshold", self.anomaly_threshold_train, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
         loss, metrics = self._process_batch(batch, stage="val")
@@ -90,7 +100,7 @@ class BaseNextPatchForecaster(pl.LightningModule):
         se = (y_true - y_pred).pow(2).sum(dim=(2, 3))
         return se[mask].mean()
 
-    def process_batch_pred(self, batch: Dict[str, torch.Tensor]):
+    def process_batch_pred(self, batch: Dict[str, torch.Tensor], stage: str):
         ts = batch["ts"]                # [B, T, F]
         ts_mask = batch["nan_mask"]     # [B, T]
         y_detected = batch.get("y_detected", None)
@@ -105,7 +115,15 @@ class BaseNextPatchForecaster(pl.LightningModule):
         # compute loss
         loss = self.loss(y_true, y_pred, y_mask)
 
-        # metrics (including detection_accuracy via compute_metrics)
+        paths = batch.get("path", [None] * ts.shape[0])
+        if isinstance(paths, str):
+            paths = [paths]
+
+        # squared error for exporting
+        se = (y_true - y_pred).pow(2).sum(dim=(2, 3))  # [B, T]
+        flags = (se > getattr(self, "anomaly_threshold", 0.5)).int()
+
+         # metrics (including detection_accuracy via compute_metrics)
         metrics = compute_metrics(
             y_true, 
             y_pred, 
@@ -114,16 +132,8 @@ class BaseNextPatchForecaster(pl.LightningModule):
             threshold=getattr(self, "anomaly_threshold", 0.5),
             y_detected_pred=flags.detach().cpu().tolist() if y_detected is not None else None,
             mask=y_mask,
-            metric_list=["mse", "mae", "rmse", "detection_accuracy_pred"]
+            metric_list=self.config["logging"][stage]
         )
-
-        paths = batch.get("path", [None] * ts.shape[0])
-        if isinstance(paths, str):
-            paths = [paths]
-
-        # squared error for exporting
-        se = (y_true - y_pred).pow(2).sum(dim=(2, 3))  # [B, T]
-        flags = (se > getattr(self, "anomaly_threshold", 0.5)).int()
 
         out = {
             "path": list(paths),
@@ -135,6 +145,6 @@ class BaseNextPatchForecaster(pl.LightningModule):
 
     def predict_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0):
         """Predict API for Lightning: delegates to process_batch_pred and logs."""
-        loss, metrics, out = self.process_batch_pred(batch)
-        self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        loss, metrics, out = self.process_batch_pred(batch, stage="test")
+        # self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
         return out

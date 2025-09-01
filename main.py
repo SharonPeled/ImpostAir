@@ -50,7 +50,7 @@ def main():
     elif args.command == "infer":
         run_inference(config, args.checkpoint)
     elif args.command == "detect":
-        df = run_detection(config, args.checkpoint, threshold=args.threshold)
+        df = run_detection(config, args.checkpoint)
         print(df.head())
     else:
         print("Unknown command", file=sys.stderr)
