@@ -33,7 +33,7 @@ class TimeMixerPPForecaster(BaseNextPatchForecaster):
 
         self.aggregator = PatchTransformerForecaster(config)
     
-    def forward(self, context: torch.Tensor, context_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, context: torch.Tensor, context_mask: torch.Tensor = None, callsign_id: torch.Tensor = None) -> torch.Tensor:
         enc_out_list = self.backbone.encode(context, context_mask)
         enc_out = enc_out_list[0] # [batch_size, context_steps, d_model] taking only first resolution
-        return self.aggregator.forward(enc_out, context_mask)
+        return self.aggregator.forward(enc_out, context_mask, callsign_id=callsign_id)

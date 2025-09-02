@@ -31,6 +31,9 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         self.n_input_features = config['model']['patch_transformer_params']['n_input_features']
         self.n_output_features = config['model']['patch_transformer_params']['n_output_features']
         self.max_num_patches = config['model']['patch_transformer_params'].get('max_n_patches')
+        # Callsign embedding config
+        self.callsign_num_buckets = config.get('data', {}).get('callsign_num_buckets', 4096)
+        self.callsign_embed_dim = config['model']['patch_transformer_params'].get('callsign_embed_dim', 0)
         self.pos_encoding_type = config['model']['patch_transformer_params'].get('pos_encoding_type')
         
         # Build model
@@ -57,6 +60,14 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
             encoding_type=self.pos_encoding_type
         )
         
+        # Optional callsign embedding that will be added to token embeddings
+        if self.callsign_embed_dim and self.callsign_embed_dim > 0:
+            self.callsign_embedding = nn.Embedding(self.callsign_num_buckets, self.callsign_embed_dim)
+            self.callsign_project = nn.Linear(self.callsign_embed_dim, self.d_model)
+        else:
+            self.callsign_embedding = None
+            self.callsign_project = None
+
         # Transformer decoder layers (using PyTorch built-in)
         # Using TransformerEncoder with a casual mask to create a decoder-only model
         enc_layer = nn.TransformerEncoderLayer(
@@ -77,7 +88,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         patch_output_dim = self.patch_len * self.n_output_features
         self.out_proj = nn.Linear(self.d_model, patch_output_dim)  
     
-    def forward(self, context_patches: torch.Tensor, context_patches_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, context_patches: torch.Tensor, context_patches_mask: torch.Tensor = None, callsign_id: torch.Tensor = None) -> torch.Tensor:
         """
         Forward pass through the patch transformer.
 
@@ -96,6 +107,15 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
 
         # Patch embedding + positional encoding
         x = self.patch_embedding(context_patches)  # [batch, num_patches, d_model]
+        # Inject callsign embedding if available
+        if self.callsign_embedding is not None and callsign_id is not None:
+            # callsign_id expected shape [B]
+            if callsign_id.dim() > 1:
+                callsign_id = callsign_id.squeeze()
+            cs_emb = self.callsign_embedding(callsign_id.long())               # [B, E]
+            cs_proj = self.callsign_project(cs_emb)                            # [B, D]
+            cs_proj = cs_proj.unsqueeze(1).expand(-1, x.size(1), -1)           # [B, N, D]
+            x = x + cs_proj
         x = self.pos_encoding(x)  # [batch, num_patches, d_model]
 
         h = self.transformer(

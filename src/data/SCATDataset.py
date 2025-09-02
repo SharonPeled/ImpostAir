@@ -4,6 +4,7 @@ import pandas as pd
 from torch.utils.data import Dataset
 import torch
 from src.data.AbstractDataset import AbstractDataset
+from src.utils_text import stable_string_to_bucket_id
 from pathlib import Path
 import glob
 import os
@@ -15,6 +16,8 @@ class SCATDataset(AbstractDataset):
     def __init__(self, df: pd.DataFrame, config: dict, transform=None):
         super().__init__(df, config, transform)
         self.input_features = config['data']['input_features']
+        # Number of callsign buckets; configurable with a safe default
+        self.callsign_num_buckets = config.get('data', {}).get('callsign_num_buckets', 4096)
     
     def load_trajectory(self, file_path: str):
         """Load a single trajectory from file."""
@@ -24,6 +27,8 @@ class SCATDataset(AbstractDataset):
             traj_json = json.load(f)
         
         plots = []
+        callsign_val = traj_json.get('callsign') or traj_json.get('CALLSIGN')
+        callsign_id = stable_string_to_bucket_id(callsign_val, self.callsign_num_buckets)
         if 'plots' in traj_json:
             file_id = traj_json.get('id')
             for i, plot in enumerate(traj_json['plots']):
@@ -52,6 +57,8 @@ class SCATDataset(AbstractDataset):
                     if 'vy' in input_features:
                         point['vy'] = plot['I062/185'].get('vy')
                 
+                # Attach per-point callsign_id to allow later aggregation if needed
+                point['callsign_id'] = callsign_id
                 plots.append(point)
         
         return pd.DataFrame(plots)

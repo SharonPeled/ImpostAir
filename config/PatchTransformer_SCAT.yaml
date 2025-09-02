@@ -4,7 +4,7 @@ project:
   seed: 123
 
 paths:  # main relative paths
-  data_dir: "./sandbox/SCAT_unzipped"
+  data_dir: "./datasets/SCAT_unzipped"
   mlflow_uri: "./mlruns"
   checkpoint_dir: "./models"
   predictions_dir: "./predictions"
