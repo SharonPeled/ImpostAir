@@ -50,7 +50,9 @@ class BaseNextPatchForecaster(pl.LightningModule):
         columns = [col[0] for col in batch["columns"]]
         target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
 
-        y_pred = self.forward(ts, ts_mask)
+        callsign_id = batch.get("callsign_id", None)
+        y_pred = self.forward(ts, ts_mask, callsign_id=callsign_id)
+        
         y_true = ts[:, :-1, :, target_idx]
         y_mask = ts_mask[:, :-1]
 

@@ -27,13 +27,34 @@ class AbstractDataset(Dataset):
 
         df_trajectory = self.load_trajectory(file_path)
         # timestamps are in milliseconds
-        timestamps = torch.tensor(pd.to_datetime(df_trajectory['timestamp']).astype(np.int64).values // 10**6)
+        # timestamps are in milliseconds; handle ISO8601 with/without fractional seconds robustly
+        try:
+            dt_series = pd.to_datetime(df_trajectory['timestamp'], format='mixed', errors='raise')
+        except TypeError:
+            # pandas versions without 'mixed' support
+            dt_series = pd.to_datetime(df_trajectory['timestamp'], format='ISO8601', errors='raise')
+        timestamps = torch.tensor(dt_series.astype(np.int64).values // 10**6)
+
+        # Extract optional callsign_id (constant per trajectory) if present
+        callsign_id_val = None
+        if 'callsign_id' in df_trajectory.columns:
+            try:
+                callsign_id_val = int(df_trajectory['']['callsign_id'].iloc[0])
+            except Exception:
+                # Fallback: set None if unexpected type
+                callsign_id_val = None
+            # Remove from feature columns before tensor conversion
+            df_trajectory.drop(['callsign_id'], axis=1, errors='ignore', inplace=True)
+
+
         df_trajectory.drop(['timestamp', 'file_id'], axis=1, errors='ignore', inplace=True)
         
         ts = torch.tensor(df_trajectory.values).float()
         nan_mask = torch.isnan(ts).any(-1)  # Create a mask where values are NaN
 
         sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path, 'columns': list(df_trajectory.columns), 'timestamps': timestamps}
+        if callsign_id_val is not None:
+            sample['callsign_id'] = torch.tensor(callsign_id_val, dtype=torch.long)
         if self.transform:
             sample = self.transform(sample)
         return sample
