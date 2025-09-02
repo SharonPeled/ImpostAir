@@ -51,8 +51,11 @@ class BaseNextPatchForecaster(pl.LightningModule):
         target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
 
         y_pred = self.forward(ts, ts_mask)
-        y_true = ts[:, :-1, :, target_idx]
-        y_mask = ts_mask[:, :-1]
+
+        # shifting forcasts and y_true 
+        y_pred = y_pred[:, :-1, :, :]  # filtering the last patch as we dont have its corroposing y_true
+        y_true = ts[:, 1:, :, target_idx]  # shifting y_true by one patch to align with the forcasts
+        y_mask = ts_mask[:, 1:]
 
         loss = self.loss(y_true, y_pred, y_mask)
         metrics = compute_metrics(

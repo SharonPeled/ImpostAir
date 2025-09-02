@@ -105,11 +105,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
 
         h = self.out_norm(h)
 
-        # predict all next patches in parallel (teacher forcing, shifted)
-        # Use states at 0..T-2 to predict labels at 1..T-1, and mask pads in the loss.
-        h_shift = h[:, :-1, :]
-
-        y_pred_all = self.out_proj(h_shift).view(B, (N-1), self.patch_len, self.n_output_features)
+        y_pred_all = self.out_proj(h).view(B, N, self.patch_len, self.n_output_features)
 
         return y_pred_all
     
