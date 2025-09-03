@@ -7,9 +7,28 @@ from src.data.AbstractDataset import AbstractDataset
 from pathlib import Path
 import glob
 import os
-from src.utils_text import stable_string_to_bucket_id
+# from src.utils import stable_string_to_bucket_id
 
 
+import hashlib
+from typing import Optional
+# TODO: move to utils
+def stable_string_to_bucket_id(value: Optional[str], num_buckets: int) -> int:
+    """
+    Map a string to a stable integer ID in [0, num_buckets).
+    Empty/None values map to 0.
+    """
+    if not value:
+        return 0
+    # Normalize to uppercase and strip spaces to reduce variants
+    normalized = value.strip().upper()
+    if normalized == "":
+        return 0
+    # Use sha256 for stable hashing across processes and runs
+    digest = hashlib.sha256(normalized.encode("utf-8")).digest()
+    # Convert first 8 bytes to int for speed, then mod buckets
+    int_val = int.from_bytes(digest[:8], byteorder="big", signed=False)
+    return int_val % max(1, num_buckets)
 
 class SCATDataset(AbstractDataset):
     """PyTorch Dataset for SCAT trajectory data."""
@@ -28,7 +47,22 @@ class SCATDataset(AbstractDataset):
             traj_json = json.load(f)
         
         plots = []
-        callsign_val = traj_json.get('callsign') or traj_json.get('CALLSIGN')
+        # Resolve callsign from multiple possible JSON layouts
+        callsign_val = traj_json.get('callsign')
+        if not callsign_val:
+            fpl_section = traj_json.get('fpl') or {}
+            fpl_base = fpl_section.get('fpl_base')
+            if isinstance(fpl_base, list) and len(fpl_base) > 0 and isinstance(fpl_base[0], dict):
+                callsign_val = fpl_base[0].get('callsign')
+            elif isinstance(fpl_base, dict):
+                callsign_val = fpl_base.get('callsign')
+            # Fallbacks: sometimes the key might be at root under 'fpl_base' as list/dict
+            if not callsign_val:
+                root_fpl_base = traj_json.get('fpl_base')
+                if isinstance(root_fpl_base, list) and len(root_fpl_base) > 0 and isinstance(root_fpl_base[0], dict):
+                    callsign_val = root_fpl_base[0].get('callsign')
+                elif isinstance(root_fpl_base, dict):
+                    callsign_val = root_fpl_base.get('callsign')
         callsign_id = stable_string_to_bucket_id(callsign_val, self.callsign_num_buckets)
         if 'plots' in traj_json:
             file_id = traj_json.get('id')

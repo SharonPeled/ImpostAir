@@ -39,7 +39,7 @@ class AbstractDataset(Dataset):
         callsign_id_val = None
         if 'callsign_id' in df_trajectory.columns:
             try:
-                callsign_id_val = int(df_trajectory['']['callsign_id'].iloc[0])
+                callsign_id_val = (df_trajectory['callsign_id'].iloc[0])
             except Exception:
                 # Fallback: set None if unexpected type
                 callsign_id_val = None
