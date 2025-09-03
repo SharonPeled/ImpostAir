@@ -64,6 +64,7 @@ model:
 
 training:
   batch_size: 4
+  anomal_precentage: 0.99
   
   # Training parameters
   max_epochs: 5
