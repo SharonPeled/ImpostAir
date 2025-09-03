@@ -9,12 +9,11 @@ from src.utils import compute_metrics
 class BaseNextPatchForecaster(pl.LightningModule):
     """Base class for time series forecasting stagels."""
         
-    def __init__(self, config: Dict[str, Any], patch_len: int):
+    def __init__(self, config: Dict[str, Any]):
         super().__init__()
         self.config = config
         self.learning_rate = config["training"]["learning_rate"]
         self.weight_decay = config["training"]["weight_decay"]
-        self.patch_len = patch_len
         self.save_hyperparameters(config)
 
     def configure_optimizers(self):

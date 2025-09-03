@@ -19,9 +19,10 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
     """
     
     def __init__(self, config: Dict[str, Any]):
-        super(PatchTransformerForecaster, self).__init__(config, patch_len=config['model']['patch_transformer_params']['patch_len'])
+        super(PatchTransformerForecaster, self).__init__(config)
         
         # Model architecture parameters
+        self.patch_len = config['model']['patch_transformer_params']['patch_len']
         self.d_model = config['model']['patch_transformer_params']['d_model']
         self.n_heads = config['model']['patch_transformer_params']['n_heads']
         self.n_layers = config['model']['patch_transformer_params']['n_layers']
