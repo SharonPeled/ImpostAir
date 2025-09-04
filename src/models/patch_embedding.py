@@ -14,8 +14,10 @@ class PatchEmbedding(nn.Module):
         self.d_model = d_model
 
         # Linear projection from flattened patch to d_model
-        patch_input_dim = patch_len * num_features
+        patch_input_dim = patch_len * (num_features - 1)
         self.projection = nn.Linear(patch_input_dim, d_model)
+        # Use LazyLinear to infer input dim (patch_len * num_features) at runtime
+        # self.projection = nn.LazyLinear(d_model)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, patches: torch.Tensor) -> torch.Tensor:
