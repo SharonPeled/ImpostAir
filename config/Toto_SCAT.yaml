@@ -1,5 +1,5 @@
 project:
-  experiment_name: "SCAT_patch_transformer_debug"
+  experiment_name: "SCAT_Toto_debug"
   run_name: "run1"
   seed: 123
 
@@ -29,22 +29,17 @@ transformations:
       type_: "linear_interpolation"
       time_interval: 5  # seconds
       error_tolerance: 1  # seconds 
+  imputation:
+    class_path: "src.objects.ImputationTransform.ImputationTransform"
+    params:
+      type_: "constant"
+      value: 0.0
   padding:
     class_path: "src.objects.PaddingTransform.PaddingTransform"
     params:
       max_len: 3200
       pad_value: 0.0
       pad_nans: True
-  imputation:
-    class_path: "src.objects.ImputationTransform.ImputationTransform"
-    params:
-      type_: "constant"
-      value: 0.0
-  patching:
-    class_path: "src.objects.PatchTransform.PatchTransform"
-    params:
-      patch_len: 16
-      patch_nan_tolerance_percentage: 0.5
 
 data:
   class_path: "src.data.SCATDataset.SCATDataset"
@@ -55,19 +50,14 @@ data:
   val_ratio: 0.15
 
 model:
-  class_path: "src.models.PatchTransformerForecaster.PatchTransformerForecaster"
-  patch_transformer_params:
-    patch_len: ${transformations.patching.params.patch_len} # Length of each patch (subseries length)
-    d_model: 128           # Model dimension (smaller due to patch efficiency)
-    n_heads: 16            # Number of attention heads (PatchTST uses 16)
-    n_layers: 3            # Number of transformer layers (fewer needed with patches)
-    d_ff: 256              # Feed-forward dimension (2x d_model typical)
-    dropout: 0.2           # Dropout rate
-    activation: "gelu"     # Activation function (GELU as in PatchTST)
-    n_input_features: ${eval:'len(${data.input_features}) - 1'}    # Number of input features (lat, lon, alt, vx, vy) - not including timestamp
-    n_output_features: ${eval:'len(${data.output_features})'}   # Number of output features (lat, lon, alt)
-    max_n_patches: ${eval:'${transformations.padding.params.max_len} // ${transformations.patching.params.patch_len} + 1'}     # Maximum number of patches for positional encoding
-    pos_encoding_type: "learnable"  # "learnable" or "sinusoidal"
+  class_path: "src.models.TotoWrapper.TotoWrapper"
+  toto_params:
+    from_pretrained: "/home/sharonpe/ImpostAir/models/toto/models--Datadog--Toto-Open-Base-1.0/snapshots/a5befbff72062da2cca2322a227f4fe3edf8e32f"
+    # from_pretrained: "Datadog/Toto-Open-Base-1.0"
+    loss:
+      lambda_NNL: 0.5755
+      alpha: 0.0
+      delta: 0.1010
 
 training:
   batch_size: 4
@@ -92,5 +82,5 @@ logging:  # Logs both batch and epoch levels, loss is alwayes logged
   test: ['mse', 'rmse', 'mae']
 
 debug:
-  activate: true
+  activate: True
   sample_size: 30

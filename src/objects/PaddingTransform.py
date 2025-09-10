@@ -29,6 +29,7 @@ class PaddingTransform:
         """
         ts = sample['ts']
         nan_mask = sample['nan_mask']
+        timestamps = sample['timestamps']
         T, _ = ts.shape
 
         if T < self.max_len:
@@ -37,8 +38,11 @@ class PaddingTransform:
             ts = F.pad(ts, (0, 0, 0, pad_size), mode='constant', value=float(self.pad_value))
             # Mark padded positions as True in the mask (indicating padded/missing)
             nan_mask = F.pad(nan_mask, (0, pad_size), mode='constant', value=True)
+            # padding timestamps 
+            timestamps = F.pad(timestamps, (0, pad_size), mode='constant', value=True)
 
         # truncate ts if longer than max_len
         sample['ts'] = ts[-self.max_len:]
         sample['nan_mask'] = nan_mask[-self.max_len:]
+        sample['timestamps'] = timestamps[-self.max_len:]
         return sample

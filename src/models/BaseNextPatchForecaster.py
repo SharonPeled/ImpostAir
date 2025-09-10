@@ -46,7 +46,7 @@ class BaseNextPatchForecaster(pl.LightningModule):
     def _process_batch(self, batch: Dict[str, torch.Tensor], stage: str):
         ts = batch["ts"]
         ts_mask = batch["nan_mask"]
-        columns = [col[0] for col in batch["columns"]]
+        columns = [col[0] for col in batch["columns"]]  # the column names are batched 
         target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
 
         y_pred = self.forward(ts, ts_mask)
@@ -57,9 +57,11 @@ class BaseNextPatchForecaster(pl.LightningModule):
         y_mask = ts_mask[:, 1:]
 
         loss = self.loss(y_true, y_pred, y_mask)
+
         metrics = compute_metrics(
             y_true, y_pred, stage, y_mask, self.config["logging"][stage]
         )
+        
         metrics[f"{stage}_loss"] = loss
         return loss, metrics
 
