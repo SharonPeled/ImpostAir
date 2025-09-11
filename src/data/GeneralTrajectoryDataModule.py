@@ -87,4 +87,15 @@ class GeneralTrajectoryDataModule(pl.LightningDataModule):
             drop_last=False
         )
     
+    def predict_dataloader(self) -> DataLoader:
+        """Create predict dataloader (defaults to test split)."""
+        dataset = self.dataset_class(self.df_test, self.config, self.transform, **self.dataset_kwargs)
+        return DataLoader(
+            dataset,
+            batch_size=self.config.get('compute', {}).get('batch_size', 1),
+            shuffle=False,
+            num_workers=self.config.get('compute', {}).get('num_workers', 0),
+            drop_last=False
+        )
+
 
