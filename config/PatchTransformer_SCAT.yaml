@@ -8,10 +8,11 @@ paths:  # main relative paths
   mlflow_uri: "./mlruns"
   checkpoint_dir: "./models"
   predictions_dir: "./predictions"
+  track_anomaly_annotations_filepath: "./sandbox/track_anomaly_annotations.csv"
 
 compute:
   accelerator: "gpu"
-  devices: 1
+  devices: [1,]
   train_num_workers: 4
   validation_num_workers: 1
   test_num_workers: 1
@@ -56,6 +57,7 @@ data:
 
 model:
   class_path: "src.models.PatchTransformerForecaster.PatchTransformerForecaster"
+  anomaly_percentile: 0.99
   patch_transformer_params:
     patch_len: ${transformations.patching.params.patch_len} # Length of each patch (subseries length)
     d_model: 128           # Model dimension (smaller due to patch efficiency)
@@ -73,7 +75,7 @@ training:
   batch_size: 4
   
   # Training parameters
-  max_epochs: 2
+  max_epochs: 5
   learning_rate: 0.0001     # PatchTST uses 1e-4
   weight_decay: 0.01        # L2 regularization as in PatchTST
   gradient_clip_val: 1.0
@@ -81,16 +83,11 @@ training:
   # Early stopping
   early_stopping_patience: 20   # Longer patience for patch-based training
   early_stopping_monitor: "val_loss"
-  
-  # Progressive training parameters
-  teacher_forcing_ratio: 1.0    # Always use ground truth during training
-  autoregressive_inference: true  # Pure autoregressive during inference
 
 logging:  # Logs both batch and epoch levels, loss is alwayes logged
-  train: ['mse', 'rmse', 'mae']
-  val: ['mse', 'rmse', 'mae']
-  test: ['mse', 'rmse', 'mae']
+  forcasting_metrics: ['mse', 'rmse', 'mae'] # both batch and epoch levels, logged by lightning
+  anomaly_detection_metrics: ['track_AD_accuracy', ]  # AD - 'Anomaly-Detection', epoch level only, logged manually
 
 debug:
-  activate: true
+  activate: false
   sample_size: 30

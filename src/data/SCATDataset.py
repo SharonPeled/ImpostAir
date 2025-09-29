@@ -14,8 +14,7 @@ class SCATDataset(AbstractDataset):
     
     def __init__(self, df: pd.DataFrame, config: dict, transform=None):
         super().__init__(df, config, transform)
-        self.input_features = config['data']['input_features']
-    
+
     def load_trajectory(self, file_path: str):
         """Load a single trajectory from file."""
         input_features = self.config['data']['input_features']

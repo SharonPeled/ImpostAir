@@ -3,7 +3,8 @@ import torch
 import torch.nn.functional as F
 import importlib
 from torchvision import transforms
-
+import numpy as np
+from sklearn.metrics import accuracy_score
 
 def compose_transforms(config):
     transforms_list = []
@@ -20,12 +21,12 @@ def get_class_from_path(class_path):
     return Class
 
 
-def compute_metrics(
+def compute_batch_metrics(
     y_true: torch.Tensor,
     y_pred: torch.Tensor,
     stage: str,
     mask: torch.Tensor = None,
-    metric_list=None
+    metric_list = None
 ) -> dict:
     """
     Compute selected metrics for patch prediction.
@@ -40,11 +41,8 @@ def compute_metrics(
     Returns:
         dict: Dictionary containing the computed metrics.
     """
-
-    if mask is not None:
-        valid_mask = ~mask
-        y_true = y_true[valid_mask]
-        y_pred = y_pred[valid_mask]
+    y_true = y_true[mask]
+    y_pred = y_pred[mask]
 
     results = {}
     for metric in metric_list:
@@ -59,6 +57,43 @@ def compute_metrics(
             rmse = torch.sqrt(mse)
             results[f'{stage}_rmse'] = rmse.item()
         else:
-            results[f'{stage}_metric'] = float('nan')
+            results[f'{stage}_{metric}'] = float('nan')
+
+    return results
+
+
+def compute_track_anomaly_metrics(
+    y_true_track_is_anomaly: torch.Tensor,
+    y_pred_track_is_anomaly: torch.Tensor,
+    stage: str,
+    metric_list = None,
+    suffix = '_epoch'
+) -> dict:
+    """
+    Compute selected metrics for patch prediction.
+
+    Args:
+        y_true_track_is_anomaly (np.array): [num_samples].
+        y_pred_track_is_anomaly (np.array): [num_samples].
+        stage: train/test/val
+        metric_list (list): List of metric names to compute. Supported: 'mse', 'mae', 'rmse'.
+
+    Returns:
+        dict: Dictionary containing the computed metrics.
+    """
+    results = {}
+    if np.isnan(y_true_track_is_anomaly).all():
+        for metric in metric_list:
+            results[f'{stage}_{metric}{suffix}'] = float('nan')
+        return results
+
+    for metric in metric_list:
+        if metric == 'track_AD_accuracy':
+            results[f'{stage}_track_AD_accuracy{suffix}'] = accuracy_score(
+                y_true=y_true_track_is_anomaly,
+                y_pred=y_pred_track_is_anomaly
+                )
+        else:
+            results[f'{stage}_{metric}{suffix}'] = float('nan')
 
     return results

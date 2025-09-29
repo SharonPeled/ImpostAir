@@ -65,8 +65,8 @@ def run_training(config):
     
     # MLflow logger setup
     assert 'mlflow_uri' in config['paths'], "mlflow_uri must be specified in config"
-    run_name_base = config['project'].get('run_name', 'run')
-    run_name = f"{run_name_base}_{timestamp}"
+    run_name = config['project'].get('run_name', 'run')
+    # run_name = f"{run_name}_{timestamp}"  # auto logged
     mlflow_logger = MLFlowLogger(
         experiment_name=config['project']['experiment_name'],
         run_name=run_name,

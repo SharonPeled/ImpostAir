@@ -1,5 +1,5 @@
 project:
-  experiment_name: "SCAT_Toto_debug"
+  experiment_name: "SCAT_Toto"
   run_name: "run1"
   seed: 123
 
@@ -8,10 +8,11 @@ paths:  # main relative paths
   mlflow_uri: "./mlruns"
   checkpoint_dir: "./models"
   predictions_dir: "./predictions"
+  track_anomaly_annotations_filepath: "./datasets/track_anomaly_annotations.csv"
 
 compute:
   accelerator: "gpu"
-  devices: 1
+  devices: [1, ]
   train_num_workers: 4
   validation_num_workers: 1
   test_num_workers: 1
@@ -51,6 +52,7 @@ data:
 
 model:
   class_path: "src.models.TotoWrapper.TotoWrapper"
+  anomaly_threshold: 0.99
   toto_params:
     from_pretrained: "/home/sharonpe/ImpostAir/models/toto/models--Datadog--Toto-Open-Base-1.0/snapshots/a5befbff72062da2cca2322a227f4fe3edf8e32f"
     # from_pretrained: "Datadog/Toto-Open-Base-1.0"
@@ -71,16 +73,11 @@ training:
   # Early stopping
   early_stopping_patience: 20   # Longer patience for patch-based training
   early_stopping_monitor: "val_loss"
-  
-  # Progressive training parameters
-  teacher_forcing_ratio: 1.0    # Always use ground truth during training
-  autoregressive_inference: true  # Pure autoregressive during inference
 
 logging:  # Logs both batch and epoch levels, loss is alwayes logged
-  train: ['mse', 'rmse', 'mae']
-  val: ['mse', 'rmse', 'mae']
-  test: ['mse', 'rmse', 'mae']
+  forcasting_metrics: ['mse', 'rmse', 'mae'] # both batch and epoch levels, logged by lightning
+  anomaly_detection_metrics: ['track_anomaly_detection_accuracy', ]  # epoch level only, logged manually
 
 debug:
-  activate: True
-  sample_size: 30
+  activate: False
+  # sample_size: 30
