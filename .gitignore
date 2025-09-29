@@ -54,14 +54,15 @@ Thumbs.db
 logs/
 
 # Data (uncomment if you don't want to track data)
-datasets/
+/datasets/
+# /data/
 # *.csv
 # *.json
 
 # Models and predictions
-./models/
-./predictions/
-./validations/
+/models/
+/predictions/
+/validations/
 
 # Temporary files
 tmp/

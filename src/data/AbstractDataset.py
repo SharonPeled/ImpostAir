@@ -16,6 +16,8 @@ class AbstractDataset(Dataset):
         self.config = config
         self.transform = transform  
         self.df = df
+        self.df_track_annotations = self.load_track_annotations(self.config['paths'].get('track_anomaly_annotations_filepath'))
+        
 
     def __len__(self):
         """Return number of trajectories in dataset."""
@@ -24,25 +26,21 @@ class AbstractDataset(Dataset):
     def __getitem__(self, idx):
         """Load and return a single trajectory."""
         file_path = self.df.iloc[idx]['path']
+        trackid = self.df.iloc[idx]['trackid']
 
         df_trajectory = self.load_trajectory(file_path)
-        # timestamps are in milliseconds; handle ISO8601 with/without fractional seconds robustly
-        try:
-            dt_series = pd.to_datetime(df_trajectory['timestamp'], format='mixed', errors='raise')
-        except TypeError:
-            # pandas versions without 'mixed' support
-            dt_series = pd.to_datetime(df_trajectory['timestamp'], format='ISO8601', errors='raise')
+        dt_series = pd.to_datetime(df_trajectory['timestamp'], format='ISO8601', errors='raise')
         timestamps = torch.tensor(dt_series.astype(np.int64).values // 10**6)
-        df_trajectory.drop(['timestamp', 'file_id'], axis=1, errors='ignore', inplace=True)
-        # df_trajectory.drop(['y_detected'], axis=1, errors='ignore', inplace=True)
 
-        # y_detected = torch.tensor(df_trajectory['y_detected'].values).float()
-        y_detected = torch.randint(0, 2, (len(df_trajectory),)).float()
+        df_trajectory.drop(['timestamp', 'file_id'], axis=1, errors='ignore', inplace=True)
+
+        y_track_is_anomaly = self.df_track_annotations.is_anomaly.loc[trackid]
         
         ts = torch.tensor(df_trajectory.values).float()
         nan_mask = torch.isnan(ts).any(-1)  # Create a mask where values are NaN
 
-        sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path, 'columns': list(df_trajectory.columns), 'timestamps': timestamps, 'y_detected': y_detected}
+        sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path, 'columns': list(df_trajectory.columns), 
+        'timestamps': timestamps, 'y_track_is_anomaly': y_track_is_anomaly}
         if self.transform:
             sample = self.transform(sample)
         return sample
@@ -61,6 +59,23 @@ class AbstractDataset(Dataset):
             pd.DataFrame: DataFrame with columns 'trackid' and 'path' mapping trajectory IDs to their full file paths
         """
         raise NotImplementedError("Subclasses must implement get_all_ids_df")
+    
+    def load_track_annotations(self, file_path: [str, None]):
+        df_annt = pd.DataFrame({
+                'trackid': self.df.trackid.values,
+                'is_anomaly': [np.nan] * len(self.df)
+            }, index=self.df.trackid.values)
+        
+        if file_path is None: 
+            return df_annt
+        
+        df_all_annt = pd.read_csv(file_path)
+        df_all_annt.trackid = df_all_annt.trackid.astype(str)
+        df_all_annt = df_all_annt[df_all_annt.trackid.isin(self.df.trackid.values)].set_index('trackid')
+
+        df_annt.loc[df_all_annt.index, 'is_anomaly'] = df_all_annt.is_anomaly.values
+        
+        return df_annt
     
     
     

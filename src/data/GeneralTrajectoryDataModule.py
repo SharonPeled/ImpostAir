@@ -59,10 +59,11 @@ class GeneralTrajectoryDataModule(pl.LightningDataModule):
         dataset = self.dataset_class(self.df_train, self.config, self.transform, **self.dataset_kwargs)
         return DataLoader(
             dataset,
-            batch_size=self.config.get('compute', {}).get('batch_size', 1),
+            batch_size=self.config['training']['batch_size'],
             shuffle=True,
-            num_workers=self.config.get('compute', {}).get('num_workers', 0),
-            drop_last=False
+            num_workers=self.config.get('compute', {}).get('train_num_workers', 0),
+            drop_last=False,
+            persistent_workers=True
         )
     
     def val_dataloader(self) -> DataLoader:
@@ -70,10 +71,11 @@ class GeneralTrajectoryDataModule(pl.LightningDataModule):
         dataset = self.dataset_class(self.df_val, self.config, self.transform, **self.dataset_kwargs)
         return DataLoader(
             dataset,
-            batch_size=self.config.get('compute', {}).get('batch_size', 1),
+            batch_size=self.config['training']['batch_size'],
             shuffle=False,
-            num_workers=self.config.get('compute', {}).get('num_workers', 0),
-            drop_last=False
+            num_workers=self.config.get('compute', {}).get('validation_num_workers', 0),
+            drop_last=False,
+            persistent_workers=True
         )
     
     def test_dataloader(self) -> DataLoader:
@@ -81,21 +83,10 @@ class GeneralTrajectoryDataModule(pl.LightningDataModule):
         dataset = self.dataset_class(self.df_test, self.config, self.transform, **self.dataset_kwargs)
         return DataLoader(
             dataset,
-            batch_size=self.config.get('compute', {}).get('batch_size', 1),
+            batch_size=self.config['training']['batch_size'],
             shuffle=False,
-            num_workers=self.config.get('compute', {}).get('num_workers', 0),
+            num_workers=self.config.get('compute', {}).get('test_num_workers', 0),
             drop_last=False
         )
     
-    def predict_dataloader(self) -> DataLoader:
-        """Create predict dataloader (defaults to test split)."""
-        dataset = self.dataset_class(self.df_test, self.config, self.transform, **self.dataset_kwargs)
-        return DataLoader(
-            dataset,
-            batch_size=self.config.get('compute', {}).get('batch_size', 1),
-            shuffle=False,
-            num_workers=self.config.get('compute', {}).get('num_workers', 0),
-            drop_last=False
-        )
-
 

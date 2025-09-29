@@ -21,15 +21,12 @@ def get_class_from_path(class_path):
     return Class
 
 
-def compute_metrics(
+def compute_batch_metrics(
     y_true: torch.Tensor,
     y_pred: torch.Tensor,
     stage: str,
-    y_detected: torch.Tensor = None,
-    y_detected_pred: torch.Tensor = None,
-    threshold: float = 0.5,
     mask: torch.Tensor = None,
-    metric_list=None
+    metric_list = None
 ) -> dict:
     """
     Compute selected metrics for patch prediction.
@@ -44,11 +41,8 @@ def compute_metrics(
     Returns:
         dict: Dictionary containing the computed metrics.
     """
-    if mask is not None:
-        valid_mask = ~mask
-        y_true = y_true[valid_mask]
-        y_pred = y_pred[valid_mask]
-        y_detected_true = y_detected[valid_mask]
+    y_true = y_true[mask]
+    y_pred = y_pred[mask]
 
     results = {}
     for metric in metric_list:
@@ -62,15 +56,44 @@ def compute_metrics(
             mse = F.mse_loss(y_pred.view(-1), y_true.view(-1))
             rmse = torch.sqrt(mse)
             results[f'{stage}_rmse'] = rmse.item()
-        elif metric == 'detection_accuracy':
-            mse_per_sample = ((y_pred - y_true) ** 2).mean(dim=-1, keepdim=True)  
-            y_detected_pred = (mse_per_sample > threshold).long().cpu().numpy()
-            detection_accuracy = accuracy_score(y_detected_true.view(-1).cpu().numpy(), y_detected_pred.reshape(-1))
-            results[f'{stage}_detection_accuracy'] = detection_accuracy
-        elif metric == 'detection_accuracy_pred':
-            detection_accuracy = accuracy_score((y_detected_pred.view(-1).cpu().numpy(), y_detected_true.view(-1)))
-            results[f'{stage}_detection_accuracy'] = detection_accuracy.item()
         else:
-            results[f'{stage}_metric'] = float('nan')
+            results[f'{stage}_{metric}'] = float('nan')
+
+    return results
+
+
+def compute_track_anomaly_metrics(
+    y_true_track_is_anomaly: torch.Tensor,
+    y_pred_track_is_anomaly: torch.Tensor,
+    stage: str,
+    metric_list = None,
+    suffix = '_epoch'
+) -> dict:
+    """
+    Compute selected metrics for patch prediction.
+
+    Args:
+        y_true_track_is_anomaly (np.array): [num_samples].
+        y_pred_track_is_anomaly (np.array): [num_samples].
+        stage: train/test/val
+        metric_list (list): List of metric names to compute. Supported: 'mse', 'mae', 'rmse'.
+
+    Returns:
+        dict: Dictionary containing the computed metrics.
+    """
+    results = {}
+    if np.isnan(y_true_track_is_anomaly).all():
+        for metric in metric_list:
+            results[f'{stage}_{metric}{suffix}'] = float('nan')
+        return results
+
+    for metric in metric_list:
+        if metric == 'track_AD_accuracy':
+            results[f'{stage}_track_AD_accuracy{suffix}'] = accuracy_score(
+                y_true=y_true_track_is_anomaly,
+                y_pred=y_pred_track_is_anomaly
+                )
+        else:
+            results[f'{stage}_{metric}{suffix}'] = float('nan')
 
     return results

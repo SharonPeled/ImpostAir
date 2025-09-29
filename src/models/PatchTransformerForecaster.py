@@ -19,9 +19,10 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
     """
     
     def __init__(self, config: Dict[str, Any]):
-        super(PatchTransformerForecaster, self).__init__(config, patch_len=config['model']['patch_transformer_params']['patch_len'])
+        super(PatchTransformerForecaster, self).__init__(config)
         
         # Model architecture parameters
+        self.patch_len = config['model']['patch_transformer_params']['patch_len']
         self.d_model = config['model']['patch_transformer_params']['d_model']
         self.n_heads = config['model']['patch_transformer_params']['n_heads']
         self.n_layers = config['model']['patch_transformer_params']['n_layers']
@@ -105,11 +106,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
 
         h = self.out_norm(h)
 
-        # predict all next patches in parallel (teacher forcing, shifted)
-        # Use states at 0..T-2 to predict labels at 1..T-1, and mask pads in the loss.
-        h_shift = h[:, :-1, :]
-
-        y_pred_all = self.out_proj(h_shift).view(B, (N-1), self.patch_len, self.n_output_features)
+        y_pred_all = self.out_proj(h).view(B, N, self.patch_len, self.n_output_features)
 
         return y_pred_all
     

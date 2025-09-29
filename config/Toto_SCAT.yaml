@@ -1,0 +1,83 @@
+project:
+  experiment_name: "SCAT_Toto"
+  run_name: "run1"
+  seed: 123
+
+paths:  # main relative paths
+  data_dir: "./sandbox/SCAT_unzipped"
+  mlflow_uri: "./mlruns"
+  checkpoint_dir: "./models"
+  predictions_dir: "./predictions"
+  track_anomaly_annotations_filepath: "./datasets/track_anomaly_annotations.csv"
+
+compute:
+  accelerator: "gpu"
+  devices: [1, ]
+  train_num_workers: 4
+  validation_num_workers: 1
+  test_num_workers: 1
+
+transformations:
+  normalization: 
+    class_path: "src.objects.NormalizerTransform.NormalizerTransform"  
+    params:
+      type_: "global_standard"  # to not overide type keyword
+      mean: [58.0, 15.0, 350.0, 100.0, 100.0]  # Mean for each channel
+      std: [1.0, 1.0, 100.0, 50.0, 50.0]   # Std for each channel
+  regularization:
+    class_path: "src.objects.RegularizationTransform.RegularizationTransform"
+    params:
+      type_: "linear_interpolation"
+      time_interval: 5  # seconds
+      error_tolerance: 1  # seconds 
+  imputation:
+    class_path: "src.objects.ImputationTransform.ImputationTransform"
+    params:
+      type_: "constant"
+      value: 0.0
+  padding:
+    class_path: "src.objects.PaddingTransform.PaddingTransform"
+    params:
+      max_len: 3200
+      pad_value: 0.0
+      pad_nans: True
+
+data:
+  class_path: "src.data.SCATDataset.SCATDataset"
+  # Feature configuration
+  input_features: ['timestamp', 'lat', 'lon', 'alt', 'vx', 'vy']
+  output_features: ['lat', 'lon', 'alt']
+  train_ratio: 0.7
+  val_ratio: 0.15
+
+model:
+  class_path: "src.models.TotoWrapper.TotoWrapper"
+  anomaly_threshold: 0.99
+  toto_params:
+    from_pretrained: "/home/sharonpe/ImpostAir/models/toto/models--Datadog--Toto-Open-Base-1.0/snapshots/a5befbff72062da2cca2322a227f4fe3edf8e32f"
+    # from_pretrained: "Datadog/Toto-Open-Base-1.0"
+    loss:
+      lambda_NNL: 0.5755
+      alpha: 0.0
+      delta: 0.1010
+
+training:
+  batch_size: 4
+  
+  # Training parameters
+  max_epochs: 2
+  learning_rate: 0.0001     # PatchTST uses 1e-4
+  weight_decay: 0.01        # L2 regularization as in PatchTST
+  gradient_clip_val: 1.0
+  
+  # Early stopping
+  early_stopping_patience: 20   # Longer patience for patch-based training
+  early_stopping_monitor: "val_loss"
+
+logging:  # Logs both batch and epoch levels, loss is alwayes logged
+  forcasting_metrics: ['mse', 'rmse', 'mae'] # both batch and epoch levels, logged by lightning
+  anomaly_detection_metrics: ['track_anomaly_detection_accuracy', ]  # epoch level only, logged manually
+
+debug:
+  activate: False
+  # sample_size: 30

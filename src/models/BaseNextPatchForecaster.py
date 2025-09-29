@@ -3,23 +3,22 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from typing import Dict, Any
-from src.utils import compute_metrics
-import numpy as np
+from src.utils import compute_batch_metrics, compute_track_anomaly_metrics
+import numpy as np 
 
 
 class BaseNextPatchForecaster(pl.LightningModule):
     """Base class for time series forecasting stagels."""
         
-    def __init__(self, config: Dict[str, Any], patch_len: int):
+    def __init__(self, config: Dict[str, Any]):
         super().__init__()
         self.config = config
         self.learning_rate = config["training"]["learning_rate"]
         self.weight_decay = config["training"]["weight_decay"]
-        self.patch_len = patch_len
         self.save_hyperparameters(config)
-        self.anomaly_threshold_train = 0.5
-        self._epoch_train_losses = []
-        self.anomaly_precentage = config["training"]["anomal_precentage"]
+        self._epoch_artifacts = {}
+        self.anomaly_percentile = config["model"]["anomaly_percentile"]
+        self.anomaly_train_threshold = None 
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""
@@ -51,101 +50,89 @@ class BaseNextPatchForecaster(pl.LightningModule):
     def _process_batch(self, batch: Dict[str, torch.Tensor], stage: str):
         ts = batch["ts"]
         ts_mask = batch["nan_mask"]
-        y_detected = batch["y_detected"]
+        y_track_is_anomaly = batch["y_track_is_anomaly"]
         columns = [col[0] for col in batch["columns"]]
         target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
 
         y_pred = self.forward(ts, ts_mask)
-        y_true = ts[:, :-1, :, target_idx]
-        y_detected = y_detected[:, :-1]
-        y_mask = ts_mask[:, :-1]
+
+        # shifting forcasts and y_true 
+        y_pred = y_pred[:, :-1, :, :]  # filtering the last patch as we dont have its corroposing y_true
+        y_true = ts[:, 1:, :, target_idx]  # shifting y_true by one patch to align with the forcasts
+        y_mask = ts_mask[:, 1:]
 
         loss, batch_losses = self.loss(y_true, y_pred, y_mask)
 
-        metrics = compute_metrics(
-            y_true=y_true, y_pred=y_pred, stage=stage, mask=y_mask, y_detected=y_detected, threshold=self.anomaly_threshold_train, metric_list=self.config["logging"][stage]
+        metrics = compute_batch_metrics(
+            y_true, y_pred, stage, y_mask, self.config["logging"]['forcasting_metrics']
         )
+        
         metrics[f"{stage}_loss"] = loss
-        return loss, metrics, batch_losses
+        return loss, metrics, batch_losses, y_track_is_anomaly
+    
+    def general_step(self, batch, batch_idx, stage):
+        loss, metrics, batch_losses, y_track_is_anomaly = self._process_batch(batch, stage=stage)
+        self.log_dict(metrics, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
+        self._epoch_artifacts[stage]['loss'].append(batch_losses.detach().cpu())
+        self._epoch_artifacts[stage]['y_track_is_anomaly'].append(y_track_is_anomaly.detach().cpu())
+        return {"loss": loss}
 
     def training_step(self, batch, batch_idx):
-        loss, metrics, batch_losses = self._process_batch(batch, stage="train")
-        self.log_dict(metrics, on_step=True, on_epoch=True, prog_bar=True, sync_dist=True)
-        self._epoch_train_losses.append(batch_losses.detach())
-        return {"loss": loss}
-        
-    def on_train_epoch_start(self):
-        self._epoch_train_losses = []
-
-    def on_train_epoch_end(self):
-        if len(self._epoch_train_losses) == 0:
-            return
-        per_step = torch.cat(self._epoch_train_losses, dim=0)   # shape [N_total]
-        all_losses = self.all_gather(per_step).reshape(-1).float().cpu().numpy()
-        self.anomaly_threshold_train = float(np.percentile(all_losses, self.anomaly_precentage))
-        self.log("anomaly_threshold", self.anomaly_threshold_train, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        return self.general_step(batch, batch_idx, stage='train')
 
     def validation_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
-        loss, metrics, _ = self._process_batch(batch, stage="val")
-        for name, val in metrics.items():
-            self.log(name, val, on_step=False, on_epoch=True, prog_bar=name.endswith("loss"), sync_dist=True)
-        return loss
+        return self.general_step(batch, batch_idx, stage='val')
 
     def test_step(self, batch: Dict[str, torch.Tensor], batch_idx: int):
-        loss, metrics, _ = self._process_batch(batch, stage="test")
-        for name, val in metrics.items():
-            self.log(name, val, on_step=False, on_epoch=True, prog_bar=name.endswith("loss"), sync_dist=True)
-        return loss
-
-    def loss(self, y_true, y_pred, mask):
-        se = (y_true - y_pred).pow(2).sum(dim=(2, 3))
-        return se[mask].mean(), se[mask]
-
-    def process_batch_pred(self, batch: Dict[str, torch.Tensor], stage: str):
-        ts = batch["ts"]                # [B, T, F]
-        ts_mask = batch["nan_mask"]     # [B, T]
-        y_detected = batch.get("y_detected", None)
-        columns = [col[0] for col in batch["columns"]]
-        target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
-
-        # forward
-        y_pred = self.forward(ts, ts_mask)
-        y_true = ts[:, :-1, :, target_idx]      # align with pred
-        y_mask = ts_mask[:, :-1]
-
-        # compute loss
-        loss, batch_losses = self.loss(y_true, y_pred, y_mask)
-
-        paths = batch.get("path", [None] * ts.shape[0])
-        if isinstance(paths, str):
-            paths = [paths]
-
-        # squared error for exporting
-        # se = (y_true - y_pred).pow(2).sum(dim=(2, 3))  # [B, T]
-        flags = (batch_losses > getattr(self, "anomaly_threshold", 0.5)).int()
-
-         # metrics (including detection_accuracy via compute_metrics)
-        metrics = compute_metrics(
-            y_true, 
-            y_pred, 
-            stage="predict",
-            y_detected=y_detected[:, :-1] if y_detected is not None else None,
-            threshold=getattr(self, "anomaly_threshold", 0.5),
-            y_detected_pred=flags.detach().cpu().tolist() if y_detected is not None else None,
-            mask=y_mask,
-            metric_list=self.config["logging"][stage]
-        )
-
-        out = {
-            "path": list(paths),
-            "patch_scores": se.detach().cpu().tolist(),
-            "is_anomaly": flags.detach().cpu().tolist(),
+        return self.general_step(batch, batch_idx, stage='test')
+    
+    def on_epoch_start_general(self, stage):
+        self._epoch_artifacts[stage] = {
+            'loss': [],
+            'y_track_is_anomaly': []
         }
 
-        return loss, metrics, out
+    def on_train_epoch_start(self):
+        self.on_epoch_start_general(stage='train')
+    
+    def on_validation_epoch_start(self):
+        self.on_epoch_start_general(stage='val')
+    
+    def on_test_epoch_start(self):
+        self.on_epoch_start_general(stage='test')
 
-    def predict_step(self, batch: Dict[str, torch.Tensor], batch_idx: int, dataloader_idx: int = 0):
-        """Predict API for Lightning: delegates to process_batch_pred and logs."""
-        loss, metrics, out = self.process_batch_pred(batch, stage="test")
-        # self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
-        return out
+    def on_epoch_end_general(self, stage):
+        if len(self._epoch_artifacts[stage]) == 0:
+            return
+        epoch_losses = torch.cat(self._epoch_artifacts[stage]['loss'], dim=0).numpy()   # shape [N_total]
+        epoch_y_track_is_anomaly = torch.cat(self._epoch_artifacts[stage]['y_track_is_anomaly'], dim=0).numpy()   # shape [N_total]
+        if stage == 'train': 
+            self.anomaly_train_threshold = float(np.percentile(epoch_losses, self.anomaly_percentile))
+            self.log("anomaly_train_threshold", self.anomaly_train_threshold, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+        epoch_y_pred_track_is_anomaly = (epoch_losses > self.anomaly_train_threshold).astype(float)
+        metrics = compute_track_anomaly_metrics(epoch_y_track_is_anomaly, epoch_y_pred_track_is_anomaly, stage, self.config["logging"]['anomaly_detection_metrics'])
+        self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True, sync_dist=True)
+
+
+    def on_train_epoch_end(self):
+        self.on_epoch_end_general(stage='train')
+    
+    def on_val_epoch_end(self):
+        self.on_epoch_end_general(stage='val')
+    
+    def on_test_epoch_end(self):
+        self.on_epoch_end_general(stage='test')
+
+    def loss(self, y_true, y_pred, mask):
+        """
+        mask: True are valids, False should be filtered.
+        """
+        se = (y_true - y_pred).pow(2).mean(dim=(2, 3))
+        # Compute the mean loss over all valid (masked) elements (scalar)
+        total_loss = se[mask].mean()
+        # Compute the mean loss per sample (shape [B]), averaging only over valid (masked) elements per sample
+        # For each sample, sum the losses where mask is True, and divide by the number of valid elements per sample
+        mask_float = mask.float()  # [B, N]
+        per_sample_loss = (se * mask_float).sum(dim=1) / mask_float.sum(dim=1).clamp(min=1)
+        return total_loss, per_sample_loss
+
