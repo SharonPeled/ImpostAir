@@ -4,15 +4,15 @@ project:
   seed: 123
 
 paths:  # main relative paths
-  data_dir: "./sandbox/SCAT_unzipped"
+  data_dir: "./datasets/SCAT_unzipped"
   mlflow_uri: "./mlruns"
   checkpoint_dir: "./models"
   predictions_dir: "./predictions"
-  track_anomaly_annotations_filepath: "./sandbox/track_anomaly_annotations.csv"
+  track_anomaly_annotations_filepath: "./datasets/track_anomaly_annotations.csv"
 
 compute:
   accelerator: "gpu"
-  devices: [1,]
+  devices: 1
   train_num_workers: 4
   validation_num_workers: 1
   test_num_workers: 1
@@ -29,7 +29,7 @@ transformations:
     params:
       type_: "linear_interpolation"
       time_interval: 5  # seconds
-      error_tolerance: 1  # seconds 
+      error_tolerance: 2  # seconds 
   padding:
     class_path: "src.objects.PaddingTransform.PaddingTransform"
     params:

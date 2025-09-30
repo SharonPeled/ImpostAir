@@ -72,6 +72,7 @@ def run_training(config):
         run_name=run_name,
         tracking_uri=config['paths']['mlflow_uri']
     )
+    print(f"Initialized run: {config['project']['experiment_name']}.{run_name}")
         
     trainer = pl.Trainer(
         max_epochs=config['training']['max_epochs'],

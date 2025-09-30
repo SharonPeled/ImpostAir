@@ -35,21 +35,23 @@ class TotoLoss(nn.Module):
         """
         Compute robust loss component.
         """
-        residuals = forcasts - targets
-        residuals = residuals[~padding_mask]
+        residuals = forcasts - targets  #  [batch_size, num_variates, time_steps]
         
         if self.alpha == 0.0:
             # When alpha=0, robust loss becomes similar to MSE
             # L_robust = 2 * delta^2 * (sqrt(1 + (r/delta)^2) - 1)
-            loss = 2 * self.delta**2 * (torch.sqrt(1 + (residuals / self.delta)**2) - 1)
+            loss_per_time_step = 2 * self.delta**2 * (torch.sqrt(1 + (residuals / self.delta)**2) - 1)
         else:
             # General robust loss formula
-            loss = 2 * self.delta**2 * (
+            loss_per_time_step = 2 * self.delta**2 * (
                 (self.alpha + 1) / self.alpha * 
                 ((1 + (residuals / self.delta)**2 / (2 * self.alpha))**(self.alpha / 2) - 1)
             )
         
-        return loss.mean()
+        loss_per_sample = (loss_per_time_step * (~padding_mask).float()).sum(dim=(1, 2)) \
+                  / (~padding_mask).sum(dim=(1, 2)).clamp(min=1)
+
+        return loss_per_sample
     
     def forward(self, 
                 toto_output, 
@@ -62,7 +64,7 @@ class TotoLoss(nn.Module):
         Args:
             toto_output: TotoOutput object with distribution, loc, scale
             inputs: inputs values (batch, variate, time_steps)
-            padding_mask: Boolean mask for valid positions (True = valid, False = padding)
+            padding_mask: True where value is NaN/imputed/pad  (batch, time_steps)
         
         Returns:
             Total loss
@@ -86,18 +88,22 @@ class TotoLoss(nn.Module):
         targets = inputs[:, target_idx, self.patch_size:]
         padding_mask = padding_mask[:, target_idx, self.patch_size:]
         log_probs = log_probs[:, target_idx, :-self.patch_size]
-        
 
-        log_probs = log_probs[~padding_mask]
-        nll_loss = -log_probs.mean()
+        log_probs_per_sample = (log_probs * (~padding_mask).float()).sum(dim=(1, 2)) \
+                        / (~padding_mask).sum(dim=(1, 2)).clamp(min=1)
+        nll_loss_per_sample = -log_probs_per_sample
         
         # Get point predictions (mean of distribution)
         forcasts = distribution.mean  # Shape: (batch, variate, time_steps)        
         forcasts = forcasts[:, target_idx, :-self.patch_size]
 
-        robust_loss = self.robust_loss(forcasts, targets, padding_mask)
+        robust_loss_per_sample = self.robust_loss(forcasts, targets, padding_mask)
         
         # Combine losses
-        total_loss = self.lambda_NNL*nll_loss + (1-self.lambda_NNL) * robust_loss
-    
-        return total_loss, [nll_loss, robust_loss], forcasts, targets, padding_mask
+        loss_per_sample = self.lambda_NNL*nll_loss_per_sample + (1-self.lambda_NNL) * robust_loss_per_sample
+
+        total_loss = loss_per_sample.mean()
+        nll_loss = nll_loss_per_sample.mean()
+        robust_loss = robust_loss_per_sample.mean()
+
+        return total_loss, [nll_loss, robust_loss], forcasts, targets, padding_mask, loss_per_sample
