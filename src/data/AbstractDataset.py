@@ -16,6 +16,7 @@ class AbstractDataset(Dataset):
         self.config = config
         self.transform = transform  
         self.df = df
+        self.callsign_to_idx_dict = {callsign: idx for idx, callsign in enumerate(df['callsign'].unique())}
         self.df_track_annotations = self.load_track_annotations(self.config['paths'].get('track_anomaly_annotations_filepath'))
         
 
@@ -27,7 +28,9 @@ class AbstractDataset(Dataset):
         """Load and return a single trajectory."""
         file_path = self.df.iloc[idx]['path']
         trackid = self.df.iloc[idx]['trackid']
-
+        callsign = self.df.iloc[idx]['callsign']
+        callsign_idx = self.callsign_to_idx_dict[callsign]
+        
         df_trajectory = self.load_trajectory(file_path)
         dt_series = pd.to_datetime(df_trajectory['timestamp'], format='ISO8601', errors='raise')
         timestamps = torch.tensor(dt_series.astype(np.int64).values // 10**6)
@@ -40,7 +43,9 @@ class AbstractDataset(Dataset):
         nan_mask = torch.isnan(ts).any(-1)  # Create a mask where values are NaN
 
         sample = {'ts': ts, 'nan_mask': nan_mask, 'path': file_path, 'columns': list(df_trajectory.columns), 
-        'timestamps': timestamps, 'y_track_is_anomaly': y_track_is_anomaly}
+        'timestamps': timestamps, 'y_track_is_anomaly': y_track_is_anomaly, 'callsign': callsign, 
+        'callsign_idx': callsign_idx}
+        
         if self.transform:
             sample = self.transform(sample)
         return sample

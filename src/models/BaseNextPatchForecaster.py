@@ -54,7 +54,7 @@ class BaseNextPatchForecaster(pl.LightningModule):
         columns = [col[0] for col in batch["columns"]]
         target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
 
-        y_pred = self.forward(ts, ts_mask)
+        y_pred = self.forward(batch)
 
         # shifting forcasts and y_true 
         y_pred = y_pred[:, :-1, :, :]  # filtering the last patch as we dont have its corroposing y_true

@@ -4,11 +4,11 @@ project:
   seed: 123
 
 paths:  # main relative paths
-  data_dir: "./datasets/SCAT_unzipped"
+  data_dir: "./sandbox/SCAT_unzipped"
   mlflow_uri: "./mlruns"
   checkpoint_dir: "./models"
   predictions_dir: "./predictions"
-  track_anomaly_annotations_filepath: "./datasets/track_anomaly_annotations.csv"
+  track_anomaly_annotations_filepath: "./sandbox/track_anomaly_annotations.csv"
 
 compute:
   accelerator: "gpu"
@@ -70,6 +70,7 @@ model:
     n_output_features: ${eval:'len(${data.output_features})'}   # Number of output features (lat, lon, alt)
     max_n_patches: ${eval:'${transformations.padding.params.max_len} // ${transformations.patching.params.patch_len} + 1'}     # Maximum number of patches for positional encoding
     pos_encoding_type: "learnable"  # "learnable" or "sinusoidal"
+    callsign_vocab_size: 10
 
 training:
   batch_size: 4
