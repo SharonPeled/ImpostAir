@@ -71,6 +71,8 @@ model:
     max_n_patches: ${eval:'${transformations.padding.params.max_len} // ${transformations.patching.params.patch_len} + 1'}     # Maximum number of patches for positional encoding
     pos_encoding_type: "learnable"  # "learnable" or "sinusoidal"
     callsign_vocab_size: 10
+    time_embedding_scales: ['hours', 'days', 'months', 'years']
+    time_embedding_ref: '18/10/2016 09:00:00'
 
 training:
   batch_size: 4
