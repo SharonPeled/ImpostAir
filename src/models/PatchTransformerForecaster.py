@@ -116,7 +116,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
 
         context_patches = batch['ts']
         context_patches_mask = batch['nan_mask']
-        context_patches_callsign = batch['callsign_idx']
+        callsigns = batch['callsign_idx']
         timestamps = batch['timestamps']
         assert not context_patches.isnan().any(), "Context contains NaN"
 
@@ -128,7 +128,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         x = self.patch_embedding(context_patches)  # [batch, num_patches, d_model]
         x = self.pos_encoding(x)  # [batch, num_patches, d_model]
 
-        callsign_token = self.callsign_embedding(context_patches_callsign)  # [batch, d_model]
+        callsign_token = self.callsign_embedding(callsigns)  # [batch, d_model]
         time_embedding_token = self.time_embedding(timestamps[:, 0] / 1000)  # taking only first timestamp and converting to seconds
 
         init_token = callsign_token + time_embedding_token  # fusing both tokens

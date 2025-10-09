@@ -8,12 +8,16 @@ from jaxtyping import Bool, Float
 import safetensors.torch as safetorch
 from huggingface_hub import ModelHubMixin, constants, hf_hub_download
 import torch 
+from einops import rearrange
 
 from toto.model.attention import XFORMERS_AVAILABLE
 from toto.model.backbone import TotoBackbone
 from toto.model.transformer import XFORMERS_SWIGLU_AVAILABLE
 from toto.model.backbone import TotoOutput
 from toto.model.util import KVCache
+
+from src.models.CallsignEmbedding import CallsignEmbedding
+from src.models.MultiScaleTimeEmbedding import MultiScaleTimeEmbedding
 
 
 class TotoBackboneWrapper(torch.nn.Module, ModelHubMixin):
@@ -35,8 +39,26 @@ class TotoBackboneWrapper(torch.nn.Module, ModelHubMixin):
         use_memory_efficient_attention: bool = True,
         stabilize_with_global: bool = True,
         scale_factor_exponent: float = 10.0,
+        callsign_vocab_size=None,
+        time_embedding_scales=None,
+        time_embedding_ref=None
     ):
         super().__init__()
+
+        # Add custom components with double underscore prefix.
+        # These are not loaded from checkpoints,
+        # so we need to filter them out in state_dict and loading logic.
+        self.__callsign_embedding = CallsignEmbedding(
+            vocab_size=callsign_vocab_size,
+            d_model=embed_dim
+        )
+
+        self.__time_embedding = MultiScaleTimeEmbedding(
+            d_model=embed_dim,
+            ref_timestamp=time_embedding_ref,
+            scales=time_embedding_scales
+        )
+
         self.model = TotoBackbone(
             patch_size=patch_size,
             stride=stride,
@@ -62,15 +84,86 @@ class TotoBackboneWrapper(torch.nn.Module, ModelHubMixin):
         id_mask: Float[torch.Tensor, "batch #variate time_steps"],
         kv_cache: Optional[KVCache] = None,
         scaling_prefix_length: Optional[int] = None,
+        timestamp: Optional[torch.Tensor] = None,
+        callsigns: Optional[torch.Tensor] = None 
     ) -> TotoOutput:
-        return self.model(
+        """
+        input_padding_mask: (False where value is NaN/imputed/pad) - used in the scaler and in the loss
+        id_mask: 
+        The ID mask is used for packing unrelated time series along the Variate dimension.
+        This is used in training, and can also be useful for large-scale batch inference in order to
+        process time series of different numbers of variates using batches of a fixed shape.
+        The ID mask controls the channel-wise attention; variates with different IDs cannot attend to each other.
+        If you're not using packing, just set this to zeros.
+        """
+
+        scaled_inputs: Float[torch.Tensor, "batch variate time_steps"]
+        loc: Float[torch.Tensor, "batch variate time_steps"]
+        scale: Float[torch.Tensor, "batch variate time_steps"]
+
+        # Standard scaling operation, same API but without ID mask.
+        scaled_inputs, loc, scale = self.model.scaler(
             inputs,
-            input_padding_mask,
-            id_mask,
-            kv_cache,
-            scaling_prefix_length,
+            weights=torch.ones_like(inputs, device=inputs.device),
+            padding_mask=input_padding_mask,
+            prefix_length=scaling_prefix_length,
         )
-    
+
+        if kv_cache is not None:
+
+            prefix_len = self.model.patch_embed.stride * kv_cache.current_len(0)
+
+            # Truncate inputs so that the transformer only processes
+            # the last patch in the sequence. We'll use the KVCache
+            # for the earlier patches.
+            scaled_inputs = scaled_inputs[:, :, prefix_len:]
+
+            # As a simplification, when using kv cache we only allow decoding
+            # one step at a time after the initial forward pass.
+            assert (prefix_len == 0) or (
+                scaled_inputs.shape[-1] == self.model.patch_embed.stride
+            ), "Must decode one step at a time."
+
+            input_padding_mask = input_padding_mask[:, :, prefix_len:]
+            id_mask = id_mask[:, :, prefix_len:]
+
+        embeddings: Float[torch.Tensor, "batch variate seq_len embed_dim"]
+        reduced_id_mask: Float[torch.Tensor, "batch variate seq_len"]
+
+        embeddings, reduced_id_mask = self.model.patch_embed(scaled_inputs, id_mask)
+
+        callsign_token = self.__callsign_embedding(callsigns)  # [batch, d_model]
+        time_embedding_token = self.__time_embedding(timestamp)  # taking only first timestamp and converting to seconds
+
+        # Fuse callsign and time embedding to create the init token
+        init_token = callsign_token + time_embedding_token  # [batch, embed_dim]
+
+        # Add init_token as a new token at the start of each sequence in embeddings
+        # embeddings: [batch, variate, seq_len, embed_dim]
+        B, V, S, D = embeddings.shape
+        init_token_expanded = init_token.unsqueeze(1).unsqueeze(2).expand(B, V, 1, D)  # [batch, variate, 1, embed_dim]
+        embeddings = torch.cat([init_token_expanded, embeddings], dim=2)  # [batch, variate, seq_len+1, embed_dim]
+
+        # Update reduced_id_mask to account for the new token
+        init_mask = torch.zeros(B, V, 1, device=reduced_id_mask.device, dtype=reduced_id_mask.dtype)
+        reduced_id_mask = torch.cat([init_mask, reduced_id_mask], dim=2)  # [batch, variate, seq_len+1]
+
+        # Apply the transformer on the embeddings
+        transformed: Float[torch.Tensor, "batch variates seq_len embed_dim"] = self.model.transformer(
+            embeddings, reduced_id_mask, kv_cache
+        )
+
+        transformed = transformed[:, :, 1:, :]  # removing the init token from results
+
+        # Unembed and flatten the sequence
+        flattened: Float[torch.Tensor, "batch variates new_seq_len embed_dim"] = rearrange(
+            self.model.unembed(transformed),
+            "batch variates seq_len (patch_size embed_dim) -> batch variates (seq_len patch_size) embed_dim",
+            embed_dim=self.model.embed_dim,
+        )
+
+        return TotoOutput(self.model.output_distribution(flattened), loc, scale)
+
     @classmethod
     def load_from_checkpoint(
         cls,
@@ -119,6 +212,10 @@ class TotoBackboneWrapper(torch.nn.Module, ModelHubMixin):
             for k, v in remapped_state_dict.items()
             if k in instance.state_dict() and not k.endswith("rotary_emb.freqs")
         }
+        # Ensure any new parameters defined directly within TotoBackboneWrapper are included with their default-initialized values to satisfy strict=True. 
+        filtered_remapped_state_dict.update({
+            k:v for k, v in instance.state_dict().items() if k.startswith('_TotoBackboneWrapper__')
+        })
 
         instance.load_state_dict(filtered_remapped_state_dict, strict=strict)
         return instance
