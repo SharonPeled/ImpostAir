@@ -60,6 +60,9 @@ model:
       lambda_NNL: 0.5755
       alpha: 0.0
       delta: 0.1010
+    callsign_vocab_size: 10
+    time_embedding_scales: ['hours', 'days', 'months', 'years']
+    time_embedding_ref: '18/10/2016 09:00:00'
 
 training:
   batch_size: 4
@@ -79,5 +82,5 @@ logging:  # Logs both batch and epoch levels, loss is alwayes logged
   anomaly_detection_metrics: ['track_AD_accuracy', ]  # epoch level only, logged manually
 
 debug:
-  activate: True
+  activate: False
   sample_size: 30

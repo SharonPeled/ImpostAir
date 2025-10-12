@@ -4,10 +4,13 @@ import torch.optim as optim
 from typing import Dict, Any, Optional, Generator, Tuple
 import math
 import torch.nn.functional as F
+from datetime import datetime 
 
 from src.models.BaseNextPatchForecaster import BaseNextPatchForecaster
 from src.models.positional_encoding import PositionalEncoding
 from src.models.patch_embedding import PatchEmbedding
+from src.models.CallsignEmbedding import CallsignEmbedding
+from src.models.MultiScaleTimeEmbedding import MultiScaleTimeEmbedding
 
 
 class PatchTransformerForecaster(BaseNextPatchForecaster):
@@ -33,7 +36,10 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         self.n_output_features = config['model']['patch_transformer_params']['n_output_features']
         self.max_num_patches = config['model']['patch_transformer_params'].get('max_n_patches')
         self.pos_encoding_type = config['model']['patch_transformer_params'].get('pos_encoding_type')
-        
+        self.callsign_vocab_size = config['model']['patch_transformer_params']['callsign_vocab_size']
+        self.time_embedding_scales = config['model']['patch_transformer_params']['time_embedding_scales']
+        self.time_embedding_ref = datetime.strptime(config['model']['patch_transformer_params']['time_embedding_ref'], '%d/%m/%Y %H:%M:%S').timestamp()
+
         # Build model
         self._build_model()
         
@@ -41,6 +47,17 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
     
     def _build_model(self):
         """Build the patch-based transformer architecture."""
+
+        self.callsign_embedding = CallsignEmbedding(
+            vocab_size=self.callsign_vocab_size,
+            d_model=self.d_model
+        )
+
+        self.time_embedding = MultiScaleTimeEmbedding(
+            d_model=self.d_model,
+            ref_timestamp=self.time_embedding_ref,
+            scales=self.time_embedding_scales
+        )
         
         # Patch embedding layer
         # TODO: create better embedder 
@@ -78,17 +95,29 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         patch_output_dim = self.patch_len * self.n_output_features
         self.out_proj = nn.Linear(self.d_model, patch_output_dim)  
     
-    def forward(self, context_patches: torch.Tensor, context_patches_mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
         Forward pass through the patch transformer.
 
         Args:
-            context_patches: [batch_size, num_patches, patch_length, n_input_features]
-            context_mask: [batch_size, num_patches] boolean mask (True where value is NaN/imputed/pad)
+            batch (Dict[str, torch.Tensor]): 
+                - 'ts': Tensor of shape [batch_size, num_patches, patch_length, n_input_features], 
+                  the input sequence of patches.
+                - 'nan_mask': Tensor of shape [batch_size, num_patches], 
+                  boolean mask (True where value is NaN/imputed/pad).
+                - 'callsign_idx': Tensor of shape [batch_size], 
+                  integer index for callsign embedding.
 
         Returns:
-            next_patch_pred: [batch_size, num_patches-1, n_output_features]
+            y_pred_all (torch.Tensor): 
+                Tensor of shape [batch_size, num_patches, patch_length, n_output_features], 
+                the predicted next patch for each input patch.
         """
+
+        context_patches = batch['ts']
+        context_patches_mask = batch['nan_mask']
+        callsigns = batch['callsign_idx']
+        timestamps = batch['timestamps']
         assert not context_patches.isnan().any(), "Context contains NaN"
 
         context_patches = context_patches
@@ -99,6 +128,14 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
         x = self.patch_embedding(context_patches)  # [batch, num_patches, d_model]
         x = self.pos_encoding(x)  # [batch, num_patches, d_model]
 
+        callsign_token = self.callsign_embedding(callsigns)  # [batch, d_model]
+        time_embedding_token = self.time_embedding(timestamps[:, 0] / 1000)  # taking only first timestamp and converting to seconds
+
+        init_token = callsign_token + time_embedding_token  # fusing both tokens
+        x = torch.cat([init_token.unsqueeze(1), x], dim=1)  # [batch, num_patches + 1, d_model]
+        context_patches_mask = torch.cat([torch.zeros(B, 1, dtype=context_patches_mask.dtype, device=context_patches_mask.device), context_patches_mask], dim=1)  # [batch, num_patches + 1]
+        N += 1
+
         h = self.transformer(
             x,
             mask=nn.Transformer.generate_square_subsequent_mask(N, x.device), 
@@ -106,7 +143,7 @@ class PatchTransformerForecaster(BaseNextPatchForecaster):
 
         h = self.out_norm(h)
 
-        y_pred_all = self.out_proj(h).view(B, N, self.patch_len, self.n_output_features)
+        y_pred_all = self.out_proj(h).view(B, N, self.patch_len, self.n_output_features)[:, 1:, :, :]  # removing the init callsign token
 
         return y_pred_all
     

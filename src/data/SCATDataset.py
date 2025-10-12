@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 import pandas as pd
 from torch.utils.data import Dataset
 import torch
+import numpy as np
 from src.data.AbstractDataset import AbstractDataset
 from pathlib import Path
 import glob
@@ -64,9 +65,10 @@ class SCATDataset(AbstractDataset):
         # Create DataFrame with trajectory IDs and file paths
         df = pd.DataFrame({
             'trackid': [os.path.basename(path).replace('.json', '') for path in file_paths],
+            'callsign': str(np.random.randint(5)) + '00000',  # random 6 digits callsign
             'path': file_paths
         })
-        
+            
         return df
     
 
