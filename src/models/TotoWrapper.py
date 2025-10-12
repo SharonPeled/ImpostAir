@@ -4,7 +4,7 @@ import torch
 
 from src.models.BaseNextPatchForecaster import BaseNextPatchForecaster
 from src.models.TotoBackboneWrapper import TotoBackboneWrapper
-from src.utils import compute_metrics
+from src.utils import compute_batch_metrics
 from src.objects.TotoLoss import TotoLoss
 
 class TotoWrapper(BaseNextPatchForecaster):
@@ -33,33 +33,32 @@ class TotoWrapper(BaseNextPatchForecaster):
         ts = batch["ts"]
         ts = ts.permute(0, 2, 1).contiguous()  # batch, variant, timestemps
         batch_size, n_input_features, time_steps = ts.shape
+        y_track_is_anomaly = batch["y_track_is_anomaly"]
+        ts_mask = batch["nan_mask"]  # batch, timestemps - True where value is NaN/imputed/pad
 
-        ts_mask = batch["nan_mask"]  # batch, timestemps
-        if ts_mask is not None:
-            # ts_mask: [batch, time_steps] -> [batch, 1, time_steps] -> [batch, variate, time_steps]
-            ts_mask = ts_mask.unsqueeze(1).expand(-1, n_input_features, -1).bool()
-        else:
-            ts_mask = torch.zeros((batch_size, n_input_features, time_steps), dtype=torch.bool, device=ts.device)
-
+        # toto_mask: [batch, time_steps] -> [batch, 1, time_steps] -> [batch, variate, time_steps]
+        toto_mask = ts_mask.unsqueeze(1).expand(-1, n_input_features, -1).bool()
+        
         columns = [col[0] for col in batch["columns"]]  # the column names are batched 
         target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
 
-        toto_output = self.forward(ts, ts_mask)
+        toto_output = self.forward(ts, toto_mask)
 
-        loss, loss_components, forcasts, targets, out_mask = self.toto_loss(
+        loss, loss_components, forcasts, targets, out_mask, loss_per_sample = self.toto_loss(
             toto_output, 
             inputs=ts, 
-            padding_mask=ts_mask,
+            padding_mask=toto_mask,
             target_idx=target_idx)
 
-        metrics = compute_metrics(
-            targets, forcasts, stage, out_mask, self.config["logging"][stage]
+        metrics = compute_batch_metrics(
+            targets, forcasts, stage, out_mask, self.config["logging"]['forcasting_metrics']
         )
         
         metrics[f"{stage}_loss"] = loss.detach().cpu()
         metrics[f"{stage}_NNL_loss"] = loss_components[0].detach().cpu()
         metrics[f"{stage}_robust_loss"] = loss_components[1].detach().cpu()
-        return loss, metrics    
+
+        return loss, metrics, loss_per_sample, y_track_is_anomaly  
 
     def forward(
         self,

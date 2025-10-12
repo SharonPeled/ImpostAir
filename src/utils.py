@@ -41,8 +41,8 @@ def compute_batch_metrics(
     Returns:
         dict: Dictionary containing the computed metrics.
     """
-    y_true = y_true[mask]
-    y_pred = y_pred[mask]
+    y_true = y_true[~mask]
+    y_pred = y_pred[~mask]
 
     results = {}
     for metric in metric_list:

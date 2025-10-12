@@ -33,6 +33,7 @@ class PaddingTransform:
         T, _ = ts.shape
 
         if T < self.max_len:
+            # padding at the end so the causal attention would have something to attend to at the begining 
             pad_size = self.max_len - T
             # Pad rows at the end (second-to-last dim right)
             ts = F.pad(ts, (0, 0, 0, pad_size), mode='constant', value=float(self.pad_value))

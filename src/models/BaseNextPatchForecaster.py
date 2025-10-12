@@ -49,7 +49,7 @@ class BaseNextPatchForecaster(pl.LightningModule):
 
     def _process_batch(self, batch: Dict[str, torch.Tensor], stage: str):
         ts = batch["ts"]
-        ts_mask = batch["nan_mask"]
+        ts_mask = batch["nan_mask"]  # True where value is NaN/imputed/pad
         y_track_is_anomaly = batch["y_track_is_anomaly"]
         columns = [col[0] for col in batch["columns"]]
         target_idx = [columns.index(c) for c in self.config["data"]["output_features"]]
@@ -129,10 +129,10 @@ class BaseNextPatchForecaster(pl.LightningModule):
         """
         se = (y_true - y_pred).pow(2).mean(dim=(2, 3))
         # Compute the mean loss over all valid (masked) elements (scalar)
-        total_loss = se[mask].mean()
+        total_loss = se[~mask].mean()
         # Compute the mean loss per sample (shape [B]), averaging only over valid (masked) elements per sample
         # For each sample, sum the losses where mask is True, and divide by the number of valid elements per sample
-        mask_float = mask.float()  # [B, N]
+        mask_float = (~mask).float()  # [B, N]
         per_sample_loss = (se * mask_float).sum(dim=1) / mask_float.sum(dim=1).clamp(min=1)
         return total_loss, per_sample_loss
 
