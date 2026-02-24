@@ -97,3 +97,15 @@ def compute_track_anomaly_metrics(
             results[f'{stage}_{metric}{suffix}'] = float('nan')
 
     return results
+
+
+def denormlize_predictions(df, normlization_transform, config):
+    target_columns = [short_column_name(c, prefix='target_') for c in self.config["data"] ["output_features"]]
+    forecasts_columns = [short_column_name(c, prefix='forecast_') for c in self.config["data"] ["output_features"]]
+
+    df_list = []
+    for callsign, df_callsign in df.groupby('callsign'):
+        df_callsign[target_columns] = normlization_transform.denormlize(df_callsign[target_columns].values, callsign)
+        df_callsign[forecasts_columns] = normlization_transform.denormlize(df_callsign[forecasts_columns].values, callsign)
+        df_list.append(df_callsign)
+    return pd.concat(df_list, ignore_index=True)

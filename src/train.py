@@ -6,7 +6,7 @@ from lightning.pytorch.loggers import MLFlowLogger
 import torch
 
 from src.data.GeneralTrajectoryDataModule import GeneralTrajectoryDataModule
-from src.utils import get_class_from_path, compose_transforms
+from src.utils import get_class_from_path, compose_transforms, denormlize_predictions
 
 
 def run_training(config):
@@ -114,5 +114,27 @@ def run_training(config):
     print("\nEvaluating on test set...")
     test_results = trainer.test(model, datamodule=data_module)
     print(f"Test results: {test_results}")
+
+    if config['saving'].get('train_predictions'):
+        df_list = treiner.predict(model, dataloaders=data_module.train_dataloader())
+        if df_list:
+            dirpath = os.path.join(config['paths']['artifact_dir'], 'train', 'forecasts')
+            os.makedirs(dirpath, exist_ok=True)
+            save_predictions(df_list, dirpath, config, transform)
+    if config['saving'].get('test_predictions'):
+        df_list = treiner.predict(model, dataloaders=data_module.train_dataloader())
+        if df_list:
+            dirpath = os.path.join(config['paths']['artifact_dir'], 'test', 'forecasts')
+            os.makedirs(dirpath, exist_ok=True)
+            save_predictions(df_list, dirpath, config, transform)
     
     return model, trainer
+
+
+def save_predictions(df_list, dirpath, config, transform):
+    df_cat = pd.concat(df_list, ignore_index=True)
+    df_cat = denormlize_predictions(df_cat, transform.transforms[0], config)
+    for callsign, df_callsign in df_cat.groupby('callsign'):
+        df_callsign.to_csv(os.path.join(dirpath, f'df_{callsign}.csv'), index=False)
+
+    log.info(f'Test predictions saved to {dirpath}')

@@ -57,7 +57,8 @@ class TotoLoss(nn.Module):
                 toto_output, 
                 inputs: torch.Tensor,
                 padding_mask: Optional[torch.Tensor] = None,
-                target_idx: Optional[list] = None) -> torch.Tensor:
+                target_idx: Optional[list] = None,
+                horizon_patches: int = 1) -> torch.Tensor:
         """
         Compute TOTO loss.
         
@@ -69,6 +70,12 @@ class TotoLoss(nn.Module):
         Returns:
             Total loss
         """
+        # Horizon in timesteps. In this codebase `self.patch_size` is set to the model stride,
+        # and the default behavior is 1-patch-ahead (shift = stride).
+        horizon_patches = int(horizon_patches)
+        horizon_patches = max(1, horizon_patches)
+        shift = horizon_patches * self.patch_size
+
         # Extract components from TOTO output
         distribution = toto_output.distribution
         loc = toto_output.loc
@@ -85,9 +92,9 @@ class TotoLoss(nn.Module):
 
         # shifted log_probs and targets
         # Toto also remove extreme values that can occur early in training
-        targets = inputs[:, target_idx, self.patch_size:]
-        padding_mask = padding_mask[:, target_idx, self.patch_size:]
-        log_probs = log_probs[:, target_idx, :-self.patch_size]
+        targets = inputs[:, target_idx, shift:]
+        padding_mask = padding_mask[:, target_idx, shift:]
+        log_probs = log_probs[:, target_idx, :-shift]
 
         log_probs_per_sample = (log_probs * (~padding_mask).float()).sum(dim=(1, 2)) \
                         / (~padding_mask).sum(dim=(1, 2)).clamp(min=1)
@@ -95,7 +102,7 @@ class TotoLoss(nn.Module):
         
         # Get point predictions (mean of distribution)
         forcasts = distribution.mean  # Shape: (batch, variate, time_steps)        
-        forcasts = forcasts[:, target_idx, :-self.patch_size]
+        forcasts = forcasts[:, target_idx, :-shift]
 
         robust_loss_per_sample = self.robust_loss(forcasts, targets, padding_mask)
         
