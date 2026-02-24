@@ -56,40 +56,78 @@ class TotoWrapper(BaseNextPatchForecaster):
         # Predict stage: autoregressive forecasting instead of teacher forcing
         # ------------------------------------------------------------------
 
-        if stage == 'predict' and type == 'autoregressive2':  
+        if stage == 'predict'and _type == 'autoregressive2':
+            patch_size = self.toto.model.patch_embed.stride
+            prediction_length = time_steps - patch_size  # same horizon as your loss uses
 
-        # forecast.mean: [B, V, prediction_length] in ORIGINAL scale
-        forecasts = forecast.mean
-        targets = ts[:, :, patch_size:]  # [B, V, prediction_length]
-        out_mask = toto_mask[:, :, patch_size:]  # [B, V, prediction_length]
+            # Build MaskedTimeseries for Toto
+            # ts: [B, V, T]
+            # ts_mask: [B, T] True where NaN/pad  -> need True where VALID for Toto
+            padding_mask = (~toto_mask).bool()  # [B, V, T], True = valid
 
-        # Select only your output features
-        forecasts = forecasts[:, target_idx, :]
-        targets = targets[:, target_idx, :]
-        out_mask = out_mask[:, target_idx, :]
+            # timestamps: [B, T] in ms -> seconds
+            ts_seconds = (batch["timestamps"] / 1000.0).to(ts.device)  # [B, T]
+            timestamp_seconds = ts_seconds.unsqueeze(1).expand(-1, n_input_features, -1)  # [B, V, T]
 
-        # MSE over valid points
-        valid = ~out_mask
-        sq_error = (targets - forecasts).pow(2)
-        total_loss = (sq_error[valid]).mean() if valid.any() else torch.tensor(0.0, device=ts.device)
+            # Estimate constant step in seconds per series
+            dt = ts_seconds[:, 1:] - ts_seconds[:, :-1]  # [B, T-1]
+            dt_med = dt.median(dim=1).values.clamp(min=1.0)  # [B]
+            time_interval_seconds = dt_med.unsqueeze(1).expand(-1, n_input_features).to(torch.int32)  # [B, V]
 
-        # Per-sample loss
-        valid_f = valid.float()
-        loss_per_sample = (sq_error * valid_f).sum(dim=(1, 2)) / valid_f.sum(dim=(1, 2)).clamp(min=1.0)
+            id_mask = torch.zeros_like(ts, dtype=torch.int32)
 
-        metrics = compute_batch_metrics(
-            targets,
-            forecasts,
-            stage,
-            out_mask,
-            self.config["logging"]["forcasting_metrics"],
-        )
-        metrics[f"{stage}_loss"] = total_loss.detach().cpu()
-        metrics[f"{stage}_NNL_loss"] = torch.tensor(0.0, device=ts.device).detach().cpu()
-        metrics[f"{stage}_robust_loss"] = torch.tensor(0.0, device=ts.device).detach().cpu()
+            inputs = MaskedTimeseries(
+                series=ts,
+                padding_mask=padding_mask,
+                id_mask=id_mask,
+                timestamp_seconds=timestamp_seconds.to(torch.int64),
+                time_interval_seconds=time_interval_seconds,
+            )
 
-        return total_loss, metrics, loss_per_sample, y_track_is_anomaly
-        
+            forecaster = TotoForecaster(self.toto.model)
+
+            with torch.no_grad():
+                forecast = forecaster.forecast(
+                    inputs,
+                    prediction_length=prediction_length,
+                    num_samples=None,          # or an int if you want samples
+                    samples_per_batch=prediction_length,  # or any reasonable number
+                    use_kv_cache=True,
+                )
+
+            # forecast.mean: [B, V, prediction_length] in ORIGINAL scale
+            forecasts = forecast.mean
+            targets = ts[:, :, patch_size:]  # [B, V, prediction_length]
+            out_mask = toto_mask[:, :, patch_size:]  # [B, V, prediction_length]
+
+            # Select only your output features
+            forecasts = forecasts[:, target_idx, :]
+            targets = targets[:, target_idx, :]
+            out_mask = out_mask[:, target_idx, :]
+
+            # MSE over valid points
+            valid = ~out_mask
+            sq_error = (targets - forecasts).pow(2)
+            total_loss = (sq_error[valid]).mean() if valid.any() else torch.tensor(0.0, device=ts.device)
+
+            # Per-sample loss
+            valid_f = valid.float()
+            loss_per_sample = (sq_error * valid_f).sum(dim=(1, 2)) / valid_f.sum(dim=(1, 2)).clamp(min=1.0)
+
+            metrics = compute_batch_metrics(
+                targets,
+                forecasts,
+                stage,
+                out_mask,
+                self.config["logging"]["forcasting_metrics"],
+            )
+            metrics[f"{stage}_loss"] = total_loss.detach().cpu()
+            metrics[f"{stage}_NNL_loss"] = torch.tensor(0.0, device=ts.device).detach().cpu()
+            metrics[f"{stage}_robust_loss"] = torch.tensor(0.0, device=ts.device).detach().cpu()
+
+            return total_loss, metrics, loss_per_sample, y_track_is_anomaly
+
+
         if stage == 'predict' and _type == 'autoregressive':
             patch_size = self.toto.model.patch_embed.stride
             # Number of prediction steps matches the teacher-forcing setup
